@@ -29,6 +29,7 @@ class Tenant_resolver {
             // here, since it's not resolved for this host at all).
             config('Session')->DBGroup = 'landlord';
             service('tenant')->mark_platform_host();
+            self::redirect_bare_platform_host_to_login();
             return;
         }
 
@@ -45,6 +46,32 @@ class Tenant_resolver {
         self::point_default_connection_at($tenant_row);
 
         service('tenant')->set_from_row($tenant_row);
+    }
+
+    /**
+     * Every route not under platform_* (app/Controllers/Platform_*.php) is
+     * still registered globally in app/Config/Routes.php - e.g. '/' maps to
+     * Dashboard::index(). Since 'default' is never repointed for this host,
+     * visiting the bare platform domain fell through to the ordinary Rise
+     * CRM app, unauthenticated, running against whatever 'default' happens
+     * to be at baseline - not a 404, not the platform login, just the
+     * wrong app on the wrong domain. Confirmed live: hitting
+     * http://platform.<domain>/ redirected to .../signin instead of
+     * .../platform_auth.
+     */
+    private static function redirect_bare_platform_host_to_login(): void {
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+        $path = preg_replace('#^/index\.php#', '', $path);
+        $path = ltrim($path, '/');
+
+        if ($path === '' || !str_starts_with($path, 'platform_')) {
+            // Built directly from the current host rather than base_url() -
+            // this runs in pre_system, before routing/URI services are
+            // guaranteed ready.
+            $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            header('Location: ' . $scheme . '://' . self::current_host() . '/platform_auth');
+            exit();
+        }
     }
 
     private static function current_host(): string {

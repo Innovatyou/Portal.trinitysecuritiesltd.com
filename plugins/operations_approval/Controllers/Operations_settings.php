@@ -31,7 +31,23 @@ class Operations_settings extends Security_Controller
     public function save_department()
     {
         $this->validate_submitted_data(['name'=>'required','code'=>'required','head_user_id'=>'permit_empty|numeric']);
-        $this->db->table($this->p.'oa_departments')->insert(['name'=>clean_data($this->request->getPost('name')),'code'=>strtoupper(clean_data($this->request->getPost('code'))),'head_user_id'=>(int)$this->request->getPost('head_user_id')?:null,'created_by'=>$this->login_user->id,'created_at'=>get_current_utc_time()]);
+        $code=strtoupper(clean_data($this->request->getPost('code')));
+        // oa_departments.code is UNIQUE; without this check a duplicate hit
+        // the DB constraint directly and threw an uncaught
+        // DatabaseException - a raw, undebuggable 500 the department form's
+        // AJAX handler couldn't parse, leaving it stuck on the loading
+        // state with nothing saved and no visible error at all.
+        if($this->db->table($this->p.'oa_departments')->where(['code'=>$code,'deleted'=>0])->countAllResults()){
+            echo json_encode(['success'=>false,'message'=>app_lang('operations_department_code_exists')]);
+            return;
+        }
+        try{
+            $this->db->table($this->p.'oa_departments')->insert(['name'=>clean_data($this->request->getPost('name')),'code'=>$code,'head_user_id'=>(int)$this->request->getPost('head_user_id')?:null,'created_by'=>$this->login_user->id,'created_at'=>get_current_utc_time()]);
+        }catch(\Throwable $e){
+            log_message('error','save_department failed: {msg}',['msg'=>$e->getMessage()]);
+            echo json_encode(['success'=>false,'message'=>app_lang('error_occurred')]);
+            return;
+        }
         echo json_encode(['success'=>true,'message'=>app_lang('record_saved'),'redirect_to'=>get_uri('operations_settings')]);
     }
     public function save_delegation()

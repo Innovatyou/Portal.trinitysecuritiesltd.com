@@ -63,6 +63,7 @@ $lang['operations_decision_recorded'] = 'Your decision has been recorded.';
 $lang['operations_workflow_not_available'] = 'This workflow is not available.';
 $lang['operations_field_required'] = '%s is required.';
 $lang['operations_code'] = 'Code';
+$lang['operations_department_code_exists'] = 'A department with this code already exists. Please use a different code.';
 $lang['operations_prefix'] = 'Request prefix';
 $lang['operations_publish'] = 'Publish';
 $lang['operations_definition_json'] = 'Workflow definition';

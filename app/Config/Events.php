@@ -26,6 +26,10 @@ use Config\App;
 
 Events::on('pre_system', static function (): void {
     if (ENVIRONMENT !== 'testing') {
+        \App\Libraries\Tenant_resolver::resolve();
+    }
+
+    if (ENVIRONMENT !== 'testing') {
         if (ini_get('zlib.output_compression')) {
             throw FrameworkException::forEnabledZlibOutputCompression();
         }

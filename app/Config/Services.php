@@ -2,6 +2,7 @@
 
 namespace Config;
 
+use App\Libraries\Tenant;
 use CodeIgniter\Config\BaseService;
 
 /**
@@ -29,4 +30,13 @@ class Services extends BaseService
      *     return new \CodeIgniter\Example();
      * }
      */
+
+    // The tenant resolved for the current request (see App\Libraries\Tenant_resolver).
+    public static function tenant($getShared = true): Tenant {
+        if ($getShared) {
+            return static::getSharedInstance('tenant');
+        }
+
+        return new Tenant();
+    }
 }

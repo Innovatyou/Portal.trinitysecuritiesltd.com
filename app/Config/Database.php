@@ -51,6 +51,36 @@ class Database extends Config
 	];
 
 	/**
+	 * The landlord (control-plane) connection.
+	 *
+	 * Always points at the fixed platform database that maps domains to
+	 * tenants (see app/Libraries/Tenant_resolver.php). Never overwritten at
+	 * runtime, unlike $default. Real values come from .env
+	 * (database.landlord.*), same convention as $default.
+	 *
+	 * @var array
+	 */
+	public $landlord = [
+		'DSN'      => '',
+		'hostname' => 'enter_hostname',
+		'username' => 'enter_db_username',
+		'password' => 'enter_db_password',
+		'database' => 'enter_database_name',
+		'DBDriver' => 'MySQLi',
+		'DBPrefix' => '',
+		'pConnect' => false,
+		'DBDebug'  => (ENVIRONMENT !== 'production'),
+		'charset'  => 'utf8mb4',
+		'DBCollat' => 'utf8mb4_unicode_ci',
+		'swapPre'  => '',
+		'encrypt'  => false,
+		'compress' => false,
+		'strictOn' => false,
+		'failover' => [],
+		'port'     => 3306,
+	];
+
+	/**
 	 * This database connection is used when
 	 * running PHPUnit database tests.
 	 *

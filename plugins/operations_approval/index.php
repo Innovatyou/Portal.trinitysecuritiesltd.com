@@ -133,3 +133,4 @@ $routes->post('customersapi/operations/requests', '\operations_approval\Controll
 $routes->post('customersapi/operations/requests/(:num)/decision', '\operations_approval\Controllers\Operations_api::decision/$1');
 $routes->post('customersapi/operations/requests/(:num)/comment', '\operations_approval\Controllers\Operations_api::comment/$1');
 $routes->post('customersapi/operations/requests/(:num)/information', '\operations_approval\Controllers\Operations_api::information/$1');
+$routes->post('customersapi/operations/requests/(:num)/resubmit', '\operations_approval\Controllers\Operations_api::resubmit/$1');

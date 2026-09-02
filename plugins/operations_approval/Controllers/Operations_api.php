@@ -58,7 +58,12 @@ class Operations_api extends ResourceController
         $request['values']=$this->db->table($this->p.'oa_request_values')->select('field_key,value_text,value_json')->where(['request_id'=>$id,'revision_no'=>$request['revision_no']])->get()->getResultArray();
         $request['timeline']=$this->db->table($this->p.'oa_stage_instances i')->select('i.id,i.name_snapshot,i.type_snapshot,i.status,i.activated_at,i.completed_at,i.due_at,d.decision,d.comment,d.actor_name_snapshot,d.created_at decision_at')->join($this->p.'oa_decisions d','d.stage_instance_id=i.id','left')->where('i.request_id',$id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResultArray();
         $request['comments']=$this->db->table($this->p.'oa_comments')->select('user_name_snapshot,comment,visibility,created_at')->where('request_id',$id)->orderBy('created_at')->get()->getResultArray();
+        $request['conversations']=$this->db->table($this->p.'oa_conversations')->where('request_id',$id)->orderBy('opened_at')->get()->getResultArray();
         $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRowArray():null;$request['active_assignment']=$assignment;$request['can_decide']=(bool)$assignment;
+        $request['can_resubmit']=(int)$request['requester_id']===(int)$user->id&&$request['status']==='returned';
+        $openConversation=$request['status']==='information_requested'?$this->db->table($this->p.'oa_conversations')->where(['request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRowArray():null;
+        $request['can_respond_information']=(bool)$openConversation;
+        $request['open_conversation_id']=$openConversation['id']??null;
         return $this->respond(['success'=>true,'message'=>'Request details','data'=>$request]);
     }
     public function create():ResponseInterface
@@ -83,7 +88,71 @@ class Operations_api extends ResourceController
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request||!(new Access_service())->canView((object)$request,$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);$comment=trim((string)$this->request->getPost('comment'));if(!$comment)return $this->respond(['success'=>false,'message'=>'Comment is required'],422);$this->db->table($this->p.'oa_comments')->insert(['request_id'=>$id,'stage_instance_id'=>$request['current_stage_instance_id']?:null,'user_id'=>$user->id,'user_name_snapshot'=>trim($user->first_name.' '.$user->last_name),'comment'=>clean_data($comment),'visibility'=>'workflow','created_at'=>get_current_utc_time()]);(new Audit_service())->record('comment_created',$id,$request['current_stage_instance_id']?(int)$request['current_stage_instance_id']:null,$user);return $this->respond(['success'=>true,'message'=>'Comment added']);
     }
-    public function information(int $id):ResponseInterface{return $this->respond(['success'=>false,'message'=>'Use the web workflow for information requests in this build.'],422);}
+    public function information(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        $action=(string)$this->request->getPost('action');
+        if($action==='respond')return $this->respondInformation($id,$request,$user);
+        return $this->requestInformation($id,$request,$user);
+    }
+    private function requestInformation(int $id,array $request,object $user):ResponseInterface
+    {
+        $question=trim((string)$this->request->getPost('question'));if(!$question)return $this->respond(['success'=>false,'message'=>'Question is required'],422);
+        $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRow():null;
+        if(!$assignment)return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $now=get_current_utc_time();$this->db->transStart();
+        $this->db->table($this->p.'oa_conversations')->insert(['request_id'=>$id,'stage_instance_id'=>$request['current_stage_instance_id'],'opened_by'=>$user->id,'assigned_to'=>$request['requester_id'],'status'=>'open','question'=>clean_data($question),'opened_at'=>$now]);
+        $conversationId=(int)$this->db->insertID();
+        $this->db->table($this->p.'oa_requests')->where('id',$id)->update(['status'=>'information_requested','updated_at'=>$now]);
+        (new Audit_service())->record('information_requested',$id,(int)$request['current_stage_instance_id'],$user,[],['conversation_id'=>$conversationId,'question'=>$question]);
+        $this->db->transComplete();
+        (new Notification_service())->send('information_requested',$id,[(int)$request['requester_id']],$user,['comment'=>$question,'dedupe'=>$conversationId]);
+        if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not save the request'],500);
+        return $this->respond(['success'=>true,'message'=>'Information requested']);
+    }
+    private function respondInformation(int $id,array $request,object $user):ResponseInterface
+    {
+        if((int)$request['requester_id']!==(int)$user->id||$request['status']!=='information_requested')return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $conversationId=(int)$this->request->getPost('conversation_id');$response=trim((string)$this->request->getPost('response'));
+        if(!$conversationId||!$response)return $this->respond(['success'=>false,'message'=>'conversation_id and response are required'],422);
+        $conversation=$this->db->table($this->p.'oa_conversations')->where(['id'=>$conversationId,'request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRow();
+        if(!$conversation)return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $now=get_current_utc_time();$this->db->transStart();
+        $this->db->table($this->p.'oa_conversations')->where('id',$conversation->id)->update(['response'=>clean_data($response),'status'=>'answered','responded_at'=>$now]);
+        $this->db->table($this->p.'oa_requests')->where('id',$id)->update(['status'=>'pending_approval','updated_at'=>$now]);
+        (new Audit_service())->record('information_supplied',$id,(int)$conversation->stage_instance_id,$user,[],['conversation_id'=>$conversation->id,'response'=>$response]);
+        $this->db->transComplete();
+        (new Notification_service())->send('approval_assigned',$id,[(int)$conversation->opened_by],$user,['comment'=>$response,'dedupe'=>'info-'.$conversation->id]);
+        if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not save the response'],500);
+        return $this->respond(['success'=>true,'message'=>'Response sent']);
+    }
+    public function resubmit(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        if(!(new Access_service())->canEdit((object)$request,$user)||$request['status']!=='returned')return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $reason=trim((string)$this->request->getPost('resubmission_comment'));if(!$reason)return $this->respond(['success'=>false,'message'=>'resubmission_comment is required'],422);
+        $fields=$this->db->table($this->p.'oa_fields')->where('version_id',$request['version_id'])->get()->getResult();
+        $oldRows=$this->db->table($this->p.'oa_request_values')->where(['request_id'=>$id,'revision_no'=>$request['revision_no']])->get()->getResult();
+        $old=[];foreach($oldRows as $row)$old[$row->field_key]=$row->value_json?json_decode($row->value_json,true):$row->value_text;
+        $newRevision=((int)$request['revision_no'])+1;$changes=[];
+        $this->db->transBegin();
+        try{
+            foreach($fields as $field){
+                $config=json_decode($field->config_json?:'{}',true)?:[];
+                $editable=!array_key_exists('editable_on_return',$config)||!empty($config['editable_on_return']);
+                $value=$editable&&$this->request->getPost('field_'.$field->field_key)!==null?$this->request->getPost('field_'.$field->field_key):($old[$field->field_key]??null);
+                if($field->is_required&&($value===null||$value===''))throw new \DomainException($field->label.' is required.');
+                if(($old[$field->field_key]??null)!=$value)$changes[$field->field_key]=['from'=>$old[$field->field_key]??null,'to'=>$value];
+                $this->db->table($this->p.'oa_request_values')->insert(['request_id'=>$id,'field_id'=>$field->id,'field_key'=>$field->field_key,'value_text'=>is_array($value)?null:clean_data((string)$value),'value_json'=>is_array($value)?json_encode($value):null,'revision_no'=>$newRevision,'created_at'=>get_current_utc_time()]);
+            }
+            $this->db->table($this->p.'oa_request_revisions')->insert(['request_id'=>$id,'revision_no'=>$newRevision,'changed_by'=>$user->id,'reason'=>clean_data($reason),'changes_json'=>json_encode($changes),'created_at'=>get_current_utc_time()]);
+            $this->db->table($this->p.'oa_requests')->where('id',$id)->update(['revision_no'=>$newRevision,'updated_at'=>get_current_utc_time()]);
+            (new Audit_service())->record('request_fields_revised',$id,null,$user,$old,$changes,['reason'=>$reason,'revision_no'=>$newRevision]);
+            (new Workflow_engine())->resubmit($id,$user);
+            $this->db->transCommit();
+            return $this->respond(['success'=>true,'message'=>'Request resubmitted']);
+        }catch(\Throwable $e){$this->db->transRollback();return $this->respond(['success'=>false,'message'=>$e->getMessage()],422);}
+    }
     private function availableFields(array $fields):array
     {
         $setting=$this->db->table($this->p.'oa_settings')->select('setting_value')->where('setting_key','currency_enabled')->get()->getRow();

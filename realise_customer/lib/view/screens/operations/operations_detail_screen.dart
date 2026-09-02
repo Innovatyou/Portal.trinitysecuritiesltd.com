@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:realise/core/utils/color_resources.dart';
 import 'package:realise/data/controller/operations/operations_controller.dart';
 import 'package:realise/data/model/operations/operations_models.dart';
@@ -22,12 +26,50 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
       ...detail.values.map((v) => ListTile(title: Text('${v['field_key']}'.replaceAll('_', ' ')), subtitle: Text('${v['value_text'] ?? v['value_json'] ?? '-'}'))),
       const Text('Approval journey', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
       ...detail.timeline.map((t) => ListTile(leading: const Icon(Icons.task_alt), title: Text('${t['name_snapshot']}'), subtitle: Text('${t['status']}'))),
+      _attachments(controller, detail),
       if (detail.canRespondInformation) _informationRequest(controller, detail),
-      if (detail.canResubmit) _resubmit(controller),
+      if (detail.canResubmit) _resubmit(controller, detail),
       TextField(controller: comment, maxLines: 3, decoration: InputDecoration(labelText: 'Add a comment', suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: () { controller.addComment(comment.text); comment.clear(); }))),
       if (detail.canDecide) _decisions(controller),
+      if (detail.canCancel) _cancel(controller),
     ]);
   }));
+
+  static String _formatSize(dynamic bytes) {
+    final n = int.tryParse('$bytes') ?? 0;
+    if (n < 1024) return '$n B';
+    if (n < 1024 * 1024) return '${(n / 1024).toStringAsFixed(1)} KB';
+    return '${(n / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  Widget _attachments(OperationsController controller, OperationsDetail detail) => DepthCard(accent: Colors.teal, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      const Text('Attachments', style: TextStyle(fontWeight: FontWeight.w900)),
+      IconButton(
+        icon: const Icon(Icons.attach_file, color: ColorResources.primaryColor),
+        onPressed: controller.submitting ? null : () => _pickAndUpload(controller),
+      ),
+    ]),
+    if (detail.attachments.isEmpty) const Text('No attachments yet.', style: TextStyle(color: Colors.black45)),
+    ...detail.attachments.map((a) => ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.insert_drive_file_outlined),
+      title: Text('${a['original_name']}', overflow: TextOverflow.ellipsis),
+      subtitle: Text(_formatSize(a['size_bytes'])),
+      onTap: () => launchUrl(
+        Uri.parse(controller.repo.downloadUrl(int.tryParse('${a['id']}') ?? 0)),
+        mode: LaunchMode.externalApplication,
+      ),
+    )),
+  ]));
+
+  Future<void> _pickAndUpload(OperationsController controller) async {
+    final result = await FilePicker.platform.pickFiles();
+    final path = result?.files.single.path;
+    if (path == null) return;
+    await controller.uploadAttachment(File(path));
+  }
+
   Widget _informationRequest(OperationsController controller, OperationsDetail detail) { final response = TextEditingController(); final q = detail.openConversation?['question']?.toString() ?? ''; return DepthCard(accent: Colors.orange, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const Text('Information requested', style: TextStyle(fontWeight: FontWeight.w900)),
     const SizedBox(height: 6), Text(q),
@@ -36,15 +78,74 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
     const SizedBox(height: 8),
     Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => controller.respondToInformation(response.text), child: const Text('Send response'))),
   ])); }
-  Widget _resubmit(OperationsController controller) { final note = TextEditingController(); return DepthCard(accent: Colors.purple, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('This request was returned', style: TextStyle(fontWeight: FontWeight.w900)),
-    const SizedBox(height: 6), const Text('Address the feedback above (use a comment or attachment if you need to), then resubmit for approval.'),
-    const SizedBox(height: 12),
-    TextField(controller: note, maxLines: 2, decoration: const InputDecoration(labelText: 'What changed?')),
-    const SizedBox(height: 8),
-    Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => controller.resubmit(note.text), child: const Text('Resubmit'))),
-  ])); }
+
+  Widget _resubmit(OperationsController controller, OperationsDetail detail) {
+    final note = TextEditingController();
+    final currentValues = {for (final v in detail.values) '${v['field_key']}': '${v['value_text'] ?? v['value_json'] ?? ''}'};
+    final fieldControllers = <String, TextEditingController>{};
+    return DepthCard(accent: Colors.purple, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('This request was returned', style: TextStyle(fontWeight: FontWeight.w900)),
+      const SizedBox(height: 6),
+      const Text('Update anything the approver flagged, then resubmit for approval.'),
+      const SizedBox(height: 12),
+      ...detail.fields.map((f) {
+        final key = '${f['field_key']}';
+        final editable = f['editable_on_return'] == true;
+        final controllerForField = fieldControllers[key] = TextEditingController(text: currentValues[key] ?? '');
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: TextField(
+            controller: controllerForField,
+            enabled: editable,
+            maxLines: f['field_type'] == 'textarea' ? 4 : 1,
+            decoration: InputDecoration(
+              labelText: '${f['label']}${'${f['is_required']}' == '1' ? ' *' : ''}',
+              helperText: editable ? null : 'Locked by this workflow',
+            ),
+          ),
+        );
+      }),
+      TextField(controller: note, maxLines: 2, decoration: const InputDecoration(labelText: 'What changed?')),
+      const SizedBox(height: 8),
+      Align(
+        alignment: Alignment.centerRight,
+        child: FilledButton(
+          onPressed: controller.submitting
+              ? null
+              : () => controller.resubmit(note.text, fieldControllers.map((k, c) => MapEntry(k, c.text))),
+          child: const Text('Resubmit'),
+        ),
+      ),
+    ]));
+  }
+
   Widget _decisions(OperationsController controller) { final note = TextEditingController(); return DepthCard(accent: ColorResources.primaryColor, child: Column(children: [TextField(controller: note, decoration: const InputDecoration(labelText: 'Decision note')), const SizedBox(height: 12), Wrap(spacing: 8, children: [FilledButton(onPressed: () => controller.decide('approve', note.text), child: const Text('Approve')), OutlinedButton(onPressed: () => controller.decide('return', note.text), child: const Text('Return')), OutlinedButton(onPressed: () => controller.decide('reject', note.text), child: const Text('Reject')), TextButton.icon(onPressed: () => _askQuestion(context, controller), icon: const Icon(Icons.help_outline), label: const Text('Ask a question'))]) ])); }
+
+  Widget _cancel(OperationsController controller) => Align(
+    alignment: Alignment.centerRight,
+    child: TextButton.icon(
+      onPressed: () => _confirmCancel(context, controller),
+      icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+      label: const Text('Cancel request', style: TextStyle(color: Colors.red)),
+    ),
+  );
+
+  void _confirmCancel(BuildContext context, OperationsController controller) {
+    final reason = TextEditingController();
+    showDialog(context: context, builder: (_) => AlertDialog(
+      title: const Text('Cancel this request?'),
+      content: TextField(controller: reason, autofocus: true, decoration: const InputDecoration(hintText: 'Reason for cancelling')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep it')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () { Navigator.pop(context); controller.cancelRequest(reason.text); },
+          child: const Text('Cancel request'),
+        ),
+      ],
+    ));
+  }
+
   void _askQuestion(BuildContext context, OperationsController controller) { final question = TextEditingController(); showDialog(context: context, builder: (_) => AlertDialog(
     title: const Text('Ask a question'),
     content: TextField(controller: question, maxLines: 3, autofocus: true, decoration: const InputDecoration(hintText: 'What do you need clarified?')),

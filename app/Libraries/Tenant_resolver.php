@@ -23,6 +23,11 @@ class Tenant_resolver {
             // touches a tenant's 'default' group. Controllers under
             // app/Controllers/Platform/* must connect via db_connect('landlord')
             // explicitly instead of using models that assume 'default'.
+            // Session storage is repointed at 'landlord' too, so a platform
+            // operator's session can never end up inside a tenant's own
+            // database (whatever 'default' happens to be left pointing at
+            // here, since it's not resolved for this host at all).
+            config('Session')->DBGroup = 'landlord';
             service('tenant')->mark_platform_host();
             return;
         }

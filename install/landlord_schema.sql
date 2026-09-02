@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS `platform_admins` (
   UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Session storage for the platform admin area. Deliberately separate from
+-- every tenant's own ci_sessions table (Tenant_resolver points Session's
+-- DBGroup at 'landlord' on the reserved platform host) so a platform
+-- operator's session can never end up living inside a tenant's database.
+CREATE TABLE IF NOT EXISTS `ci_sessions` (
+  `id` VARCHAR(128) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL,
+  `timestamp` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `data` BLOB NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ci_sessions_timestamp` (`timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `tenant_provisioning_jobs` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `tenant_id` INT UNSIGNED NOT NULL,

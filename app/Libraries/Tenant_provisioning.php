@@ -141,6 +141,20 @@ class Tenant_provisioning {
             "INSERT INTO `{$db_prefix}settings` (`setting_name`, `setting_value`, `type`) VALUES ('system_file_path', '" . $tenant_mysqli->real_escape_string($system_file_path) . "', 'app')
              ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`)"
         );
+
+        // The CustomersApi and operations_approval mobile APIs both read this
+        // one shared JWT secret (RestApiController::login, Operations_api's
+        // constructor) - normally set once by hand on the CustomersApi
+        // settings page. Nobody does that for a brand-new tenant, so without
+        // this every mobile login for a new company returns 503 "Mobile API
+        // is not configured." - discovered exactly that way against Prodigy
+        // Bank and Trinity Financial Services before this existed.
+        $mobile_jwt_secret = bin2hex(random_bytes(32));
+        $tenant_mysqli->query(
+            "INSERT INTO `{$db_prefix}settings` (`setting_name`, `setting_value`, `type`) VALUES ('customersapi_secret_key', '" . $tenant_mysqli->real_escape_string($mobile_jwt_secret) . "', 'app')
+             ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`)"
+        );
+
         $tenant_mysqli->close();
 
         $plugin_warnings = $this->install_active_plugins($admin_config, $db_database, $db_username, $db_password);

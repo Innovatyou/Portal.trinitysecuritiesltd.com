@@ -148,7 +148,9 @@ class _OnBoardIntroScreenState extends State<OnBoardIntroScreen> {
                         .sharedPreferences
                         .setBool(SharedPreferenceHelper.onboardKey, true)
                         .whenComplete(() {
-                      Get.offAllNamed(RouteHelper.loginScreen);
+                      // Multi-tenant: still need to know which company's
+                      // domain to talk to before login is even reachable.
+                      Get.offAllNamed(RouteHelper.companyDomainScreen);
                     });
                   } else {
                     introKey.currentState!.next();

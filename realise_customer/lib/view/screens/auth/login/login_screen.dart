@@ -7,6 +7,7 @@ import 'package:realise/core/utils/dimensions.dart';
 import 'package:realise/core/utils/color_resources.dart';
 import 'package:realise/core/utils/images.dart';
 import 'package:realise/core/utils/style.dart';
+import 'package:realise/core/utils/url_container.dart';
 import 'package:realise/data/controller/auth/login_controller.dart';
 import 'package:realise/data/repo/auth/login_repo.dart';
 import 'package:realise/data/services/api_service.dart';
@@ -308,6 +309,19 @@ class _LoginScreenState extends State<LoginScreen> {
                                             }
                                           },
                                         ),
+                                  const SizedBox(height: 10),
+                                  Center(
+                                    child: TextButton.icon(
+                                      onPressed: () => Get.toNamed(
+                                          RouteHelper.companyDomainScreen),
+                                      icon: const Icon(Icons.domain_outlined,
+                                          size: 16),
+                                      label: Text(
+                                        'Not ${Uri.parse(UrlContainer.domainUrl).host}? Switch company',
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    ),
+                                  ),
                                   const SizedBox(height: Dimensions.space20),
                                   if (controller
                                           .loginRepo.apiClient.sharedPreferences

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/route/route.dart';
+import 'package:realise/core/utils/url_container.dart';
 import 'package:realise/data/repo/splash/splash_repo.dart';
 import 'package:realise/view/components/snack_bar/show_custom_snackbar.dart';
 
@@ -22,6 +23,25 @@ class SplashController extends GetxController {
 
   gotoNextPage() async {
     await loadLanguage();
+
+    // Multi-tenant: every company is on its own domain, so there's nothing
+    // to call yet if none has been chosen - would otherwise hit whatever
+    // domain got compiled in by default. Onboarding still shows first (it's
+    // generic marketing, not company-specific), then the company picker,
+    // then normal login.
+    if (!UrlContainer.hasChosenCompany(splashRepo.apiClient.sharedPreferences)) {
+      bool isOnBoard = splashRepo.apiClient.sharedPreferences
+              .getBool(SharedPreferenceHelper.onboardKey) ??
+          false;
+      isLoading = false;
+      update();
+      Future.delayed(const Duration(milliseconds: 600), () {
+        Get.offAndToNamed(
+            isOnBoard ? RouteHelper.companyDomainScreen : RouteHelper.onboardScreen);
+      });
+      return;
+    }
+
     bool isRemember = splashRepo.apiClient.sharedPreferences
             .getBool(SharedPreferenceHelper.rememberMeKey) ??
         false;

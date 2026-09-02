@@ -1,3 +1,4 @@
+import 'package:realise/view/screens/auth/company_domain/company_domain_screen.dart';
 import 'package:realise/view/screens/auth/forgot_password/forget_password.dart';
 import 'package:realise/view/screens/auth/login/login_screen.dart';
 import 'package:realise/view/screens/auth/registration/registration_screen.dart';
@@ -29,6 +30,7 @@ import 'package:get/get.dart';
 class RouteHelper {
   static const String splashScreen = "/splash_screen";
   static const String onboardScreen = '/onboard_screen';
+  static const String companyDomainScreen = "/company_domain_screen";
   static const String loginScreen = "/login_screen";
   static const String registrationScreen = "/registration_screen";
   static const String forgotPasswordScreen = "/forgot_password_screen";
@@ -59,6 +61,8 @@ class RouteHelper {
   List<GetPage> routes = [
     GetPage(name: splashScreen, page: () => const SplashScreen()),
     GetPage(name: onboardScreen, page: () => const OnBoardIntroScreen()),
+    GetPage(
+        name: companyDomainScreen, page: () => const CompanyDomainScreen()),
     GetPage(name: loginScreen, page: () => const LoginScreen()),
     GetPage(name: registrationScreen, page: () => const RegistrationScreen()),
     GetPage(

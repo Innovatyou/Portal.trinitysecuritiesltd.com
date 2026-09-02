@@ -8,6 +8,7 @@ import 'package:realise/data/controller/localization/localization_controller.dar
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:realise/core/route/route.dart';
+import 'package:realise/core/utils/url_container.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/di_service/di_services.dart' as services;
 
@@ -15,6 +16,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
   Get.lazyPut(() => sharedPreferences);
+  UrlContainer.init(sharedPreferences);
   Map<String, Map<String, String>> languages = await services.init();
 
   HttpOverrides.global = MyHttpOverrides();

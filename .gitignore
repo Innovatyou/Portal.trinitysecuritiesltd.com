@@ -1,0 +1,19 @@
+# Secrets / environment
+.env
+
+# User-uploaded data and runtime writable state
+/writable/*
+!/writable/.gitkeep
+/files/
+/plugins/*/files/
+
+# Production data export (contains real customer/financial data - never commit)
+/admintsl_securitiesportaldb.sql
+
+# Vendor / third-party framework code - not edited by us, tracked upstream instead
+/system/
+/app/ThirdParty/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db

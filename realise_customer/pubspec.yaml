@@ -1,0 +1,66 @@
+name: realise
+description: "WorkFlow mobile operations and approvals app"
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.5.4
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  intl: ^0.19.0
+  get: ^4.6.6
+  http: ^1.2.2
+  introduction_screen: ^3.1.14
+  flutter_svg: ^2.0.4
+  lottie: ^3.1.3
+  shared_preferences: ^2.0.13
+  flutter_widget_from_html: ^0.15.2
+  flutter_spinkit: ^5.1.0
+  cached_network_image: ^3.3.1
+  file_picker: ^8.1.3
+  image_picker: ^1.1.2
+  nb_utils: ^7.3.5
+  flutter_html: ^3.0.0-beta.2
+  contained_tab_bar_view: ^0.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section
+  assets:
+    - assets/images/
+    - assets/animation/
+    - assets/lang/
+
+  fonts:
+    - family: Montserrat-Arabic
+      fonts:
+        - asset: assets/fonts/Montserrat-Arabic-Light.ttf
+          weight: 300
+        - asset: assets/fonts/Montserrat-Arabic-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Montserrat-Arabic-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Montserrat-Arabic-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Montserrat-Arabic-Bold.ttf
+          weight: 700

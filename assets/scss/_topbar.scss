@@ -1,0 +1,98 @@
+.navbar-nav {
+    .nav-link {
+        padding: 21px 15px !important;
+        color: $light-default-text-color;
+    }
+
+    .nav-item{
+        #user-dropdown{
+            padding: 17px 14px !important;
+        }
+        .dropdown-toggle{
+            &:after{
+                display: none !important;
+            }
+        }
+    }
+
+    .form-check{
+        margin-left: 1em;
+
+        .form-check-label, .form-check-input{
+            color: $light-default-text-color;
+            cursor: pointer;
+        }
+    }
+
+    .sidebar-toggle-btn{
+        padding-left: .8rem !important;
+    }
+}
+
+.navbar-custom{
+    background: $white;
+    top: 0;
+    right: 0;
+    left: 250px;
+    min-height: 66px;
+    border-bottom: 1px solid $light-default-border;
+    padding: 0;
+}
+
+.logo-collapsed{
+    display: none;
+}
+
+.language-dropdown{
+    height: 300px;
+    overflow-y: scroll;
+    min-width: 170px;
+}
+
+.ai-icon {
+    --size: 24px;
+    --c1: #fd397a;
+    --c2: #943ca0;
+    --c3: #02bbc2;
+    --bg: #1e1e2d;
+
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 22px;
+    font-size: calc(var(--size) * 0.45);
+    font-weight: 700;
+    color: #fff;
+    cursor: pointer;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+
+    /* gradient for AI badge */
+    background: conic-gradient(from 180deg, var(--c1), var(--c2), var(--c3), var(--c1));
+    background-size: 400% 400%;
+    /* larger for random effect */
+    transition: background 0.4s ease;
+
+    span {
+        position: relative;
+        z-index: 1;
+        text-shadow: 0 0 4px rgba(0, 0, 0, .4);
+    }
+
+    &::before {
+        content: "";
+        position: absolute;
+        inset: 2px;
+        border-radius: 50%;
+        z-index: 0;
+    }
+
+    &:hover {
+        box-shadow: 0 0 6px rgba(0, 0, 0, .25), 0 0 10px rgba(253, 57, 122, .25);
+        animation: flame-random 2.5s ease-in-out infinite;
+    }
+}

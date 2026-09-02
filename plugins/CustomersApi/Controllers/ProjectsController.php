@@ -89,8 +89,8 @@ class ProjectsController extends RestApiController {
         $projectComments = array();
         $comments = $this->Project_comments_model->get_details($comments_options)->getResult();
         foreach ($comments as $comment){
-            $comment->files = unserialize($comment->files);
-            $comment->created_by_avatar = unserialize($comment->created_by_avatar)['file_name'] ?? '';
+            $comment->files = is_array($commentFiles = @unserialize((string) $comment->files)) ? $commentFiles : [];
+            $comment->created_by_avatar = is_array($avatarFile = @unserialize((string) $comment->created_by_avatar)) ? ($avatarFile['file_name'] ?? '') : '';
             $projectComments[] = $comment;
         }
         $project->comments = $projectComments; 

@@ -17,7 +17,16 @@ class DashboardController extends RestApiController {
 	public function overview(): ResponseInterface
     {
         $appTitle = $this->Settings_model->get_setting("app_title");
-        $appLogo = unserialize($this->Settings_model->get_setting("site_logo"))['file_name'] ?? $this->Settings_model->get_setting("site_logo");
+        // site_logo is a plain filename (install/database.sql's seeded
+        // default) until someone uploads a real logo via Settings, at which
+        // point it becomes a serialized file record - unserialize() on the
+        // plain-string case throws, which crashed this endpoint outright
+        // for every fresh tenant that hasn't uploaded a logo yet. Same
+        // @unserialize + is_array() guard the core app itself uses
+        // (get_file_from_setting() in app/Helpers/general_helper.php).
+        $siteLogoSetting = $this->Settings_model->get_setting("site_logo");
+        $siteLogoFile = @unserialize((string) $siteLogoSetting);
+        $appLogo = is_array($siteLogoFile) ? ($siteLogoFile['file_name'] ?? $siteLogoSetting) : $siteLogoSetting;
         $language = $this->Settings_model->get_setting("language");
         $currencySymbol = $this->Settings_model->get_setting("currency_symbol");
         $defaultCurrency = $this->Settings_model->get_setting("default_currency");
@@ -110,7 +119,7 @@ class DashboardController extends RestApiController {
                 'note' => $user->note,
                 'alternative_phone' => $user->alternative_phone,
                 'dob' => $user->dob,
-                'avatar' => unserialize($user->image)['file_name'] ?? '',
+                'avatar' => is_array($avatarFile = @unserialize((string) $user->image)) ? ($avatarFile['file_name'] ?? '') : '',
             );
             
             $data = array(

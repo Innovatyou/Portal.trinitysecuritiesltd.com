@@ -296,7 +296,7 @@ class TicketsController extends RestApiController {
         $ticket = $this->Tickets_model->get_details(array('id' => $ticket_id))->getRow();
         $comments = $this->Ticket_comments_model->get_details($comments_options)->getResult();
         foreach ($comments as $comment){
-            $comment->files = unserialize($comment->files);
+            $comment->files = is_array($commentFiles = @unserialize((string) $comment->files)) ? $commentFiles : [];
             $ticketComments[] = $comment;
         }
         $ticket->comments = $ticketComments; 

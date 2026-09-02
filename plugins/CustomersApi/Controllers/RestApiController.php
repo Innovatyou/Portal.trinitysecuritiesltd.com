@@ -148,7 +148,7 @@ class RestApiController extends ResourceController
                 'note' => $user->note,
                 'alternative_phone' => $user->alternative_phone,
                 'dob' => $user->dob,
-                'avatar' => unserialize($user->image)['file_name'] ?? '',
+                'avatar' => is_array($avatarFile = @unserialize((string) $user->image)) ? ($avatarFile['file_name'] ?? '') : '',
             ]]);
         }
 
@@ -276,7 +276,7 @@ class RestApiController extends ResourceController
                         'note' => $user->note,
                         'alternative_phone' => $user->alternative_phone,
                         'dob' => $user->dob,
-                        'avatar' => unserialize($user->image)['file_name'] ?? '',
+                        'avatar' => is_array($avatarFile = @unserialize((string) $user->image)) ? ($avatarFile['file_name'] ?? '') : '',
                     ]
                 ]);
             }

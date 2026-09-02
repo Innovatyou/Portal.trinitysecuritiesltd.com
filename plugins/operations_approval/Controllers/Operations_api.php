@@ -8,6 +8,7 @@ use CodeIgniter\RESTful\ResourceController;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use operations_approval\Libraries\Access_service;
+use operations_approval\Libraries\Attachment_service;
 use operations_approval\Libraries\Audit_service;
 use operations_approval\Libraries\Notification_service;
 use operations_approval\Libraries\Operations_permissions;
@@ -19,6 +20,16 @@ class Operations_api extends ResourceController
     public function __construct()
     {
         $this->db=db_connect('default');$this->p=$this->db->getPrefix();$this->users=new Users_model();
+        // This controller extends ResourceController, not App_Controller, so
+        // none of the app_settings_array population App_Controller normally
+        // does happens here - meaning the global get_setting() helper (used
+        // by Attachment_service for temp_file_path/timeline_file_path,
+        // among others) silently returned '' for every core setting.
+        // Reproduced directly: attachment upload rejected a plain .txt file
+        // as "not allowed" because get_setting('accepted_file_formats')
+        // came back empty, not because the extension was actually blocked.
+        $coreSettings=(new \App\Models\Settings_model())->get_all_required_settings(0)->getResult();
+        foreach($coreSettings as $coreSetting)config('Rise')->app_settings_array[$coreSetting->setting_name]=$coreSetting->setting_value;
         if($this->db->tableExists($this->p.'oa_settings')){$mobileSetting=$this->db->table($this->p.'oa_settings')->select('setting_value')->where('setting_key','mobile_app_enabled')->get()->getRow();if($mobileSetting&&(string)$mobileSetting->setting_value!=='1'){response()->setStatusCode(ResponseInterface::HTTP_SERVICE_UNAVAILABLE)->setJSON(['success'=>false,'message'=>'The mobile app is currently disabled by an administrator.'])->send();exit;}$operationsSetting=$this->db->table($this->p.'oa_settings')->select('setting_value')->where('setting_key','mobile_module_operations')->get()->getRow();if($operationsSetting&&(string)$operationsSetting->setting_value!=='1'){response()->setStatusCode(ResponseInterface::HTTP_SERVICE_UNAVAILABLE)->setJSON(['success'=>false,'message'=>'Operations workflows are disabled in the mobile app.'])->send();exit;}}
         $secretRow=$this->db->table($this->p.'settings')->select('setting_value')->where(['setting_name'=>'customersapi_secret_key','deleted'=>0])->get()->getRow();
         $this->secret=(string)($secretRow->setting_value??'');
@@ -59,6 +70,7 @@ class Operations_api extends ResourceController
         $request['timeline']=$this->db->table($this->p.'oa_stage_instances i')->select('i.id,i.name_snapshot,i.type_snapshot,i.status,i.activated_at,i.completed_at,i.due_at,d.decision,d.comment,d.actor_name_snapshot,d.created_at decision_at')->join($this->p.'oa_decisions d','d.stage_instance_id=i.id','left')->where('i.request_id',$id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResultArray();
         $request['comments']=$this->db->table($this->p.'oa_comments')->select('user_name_snapshot,comment,visibility,created_at')->where('request_id',$id)->orderBy('created_at')->get()->getResultArray();
         $request['conversations']=$this->db->table($this->p.'oa_conversations')->where('request_id',$id)->orderBy('opened_at')->get()->getResultArray();
+        $request['attachments']=$this->db->table($this->p.'oa_attachments')->select('id,original_name,mime_type,size_bytes,context,created_at')->where(['request_id'=>$id,'deleted_at'=>null])->orderBy('created_at')->get()->getResultArray();
         $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRowArray():null;$request['active_assignment']=$assignment;$request['can_decide']=(bool)$assignment;
         $request['can_resubmit']=(int)$request['requester_id']===(int)$user->id&&$request['status']==='returned';
         $openConversation=$request['status']==='information_requested'?$this->db->table($this->p.'oa_conversations')->where(['request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRowArray():null;
@@ -125,6 +137,55 @@ class Operations_api extends ResourceController
         (new Notification_service())->send('approval_assigned',$id,[(int)$conversation->opened_by],$user,['comment'=>$response,'dedupe'=>'info-'.$conversation->id]);
         if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not save the response'],500);
         return $this->respond(['success'=>true,'message'=>'Response sent']);
+    }
+    public function upload(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request||!(new Access_service())->canView((object)$request,$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $file=$this->request->getFile('file');
+        if(!$file||!$file->isValid())return $this->respond(['success'=>false,'message'=>'No file was received'],422);
+        $originalName=$file->getClientName();
+        // Extension/size/executable-MIME checks all happen inside
+        // Attachment_service::store() below (against operations_approval's
+        // own oa_settings.allowed_extensions) - matching what the web
+        // controller does, rather than duplicating a second, differently-
+        // sourced allowlist here.
+        $tempDir=rtrim(get_setting('temp_file_path'),'/\\');
+        if(!is_dir($tempDir)&&!mkdir($tempDir,0755,true))return $this->respond(['success'=>false,'message'=>'Could not prepare upload storage'],500);
+        if(!$file->move($tempDir,$originalName))return $this->respond(['success'=>false,'message'=>'Could not save the uploaded file'],500);
+        try{
+            $attachmentId=(new Attachment_service())->store($id,(int)$user->id,$originalName,$request['current_stage_instance_id']?(int)$request['current_stage_instance_id']:null,'request');
+            (new Audit_service())->record('attachment_uploaded',$id,$request['current_stage_instance_id']?(int)$request['current_stage_instance_id']:null,$user,[],['attachment_id'=>$attachmentId]);
+            return $this->respond(['success'=>true,'message'=>'Attachment uploaded','data'=>['id'=>$attachmentId]]);
+        }catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],422);}
+    }
+    public function download(int $attachmentId):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        $attachment=(new Attachment_service())->get($attachmentId);
+        if(!$attachment)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        $request=$this->requestRow((int)$attachment->request_id);
+        if(!$request||!(new Access_service())->canView((object)$request,$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $path=rtrim($attachment->storage_path,'/\\').DIRECTORY_SEPARATOR.$attachment->storage_name;
+        if(!is_file($path)||!hash_equals($attachment->sha256,hash_file('sha256',$path)))return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        return $this->response->download($path,null)->setFileName($attachment->original_name);
+    }
+    public function cancel(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        if((int)$request['requester_id']!==(int)$user->id||!in_array($request['status'],['draft','submitted','pending_approval','returned','information_requested'],true))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $reason=trim((string)$this->request->getPost('reason'));if(!$reason)return $this->respond(['success'=>false,'message'=>'reason is required'],422);
+        $workflow=$this->db->table($this->p.'oa_workflows')->where('id',$request['workflow_id'])->get()->getRow();
+        $settings=json_decode($workflow->settings_json?:'{}',true)?:[];
+        if(empty($settings['allow_cancellation'])&&$request['status']!=='draft')return $this->respond(['success'=>false,'message'=>'Cancellation is not allowed for this workflow'],422);
+        $now=get_current_utc_time();$this->db->transStart();
+        $this->db->table($this->p.'oa_requests')->where('id',$id)->update(['status'=>'cancelled','current_stage_instance_id'=>null,'cancelled_at'=>$now,'updated_at'=>$now]);
+        $this->db->table($this->p.'oa_stage_instances')->where('request_id',$id)->whereIn('status',['pending','active','overdue'])->update(['status'=>'cancelled','completed_at'=>$now]);
+        $stageIds=array_column($this->db->table($this->p.'oa_stage_instances')->select('id')->where('request_id',$id)->get()->getResultArray(),'id');
+        if($stageIds)$this->db->table($this->p.'oa_assignments')->whereIn('stage_instance_id',$stageIds)->where('status','pending')->update(['status'=>'cancelled']);
+        (new Audit_service())->record('request_cancelled',$id,null,$user,[],['reason'=>$reason]);
+        $this->db->transComplete();
+        if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not cancel the request'],500);
+        return $this->respond(['success'=>true,'message'=>'Request cancelled']);
     }
     public function resubmit(int $id):ResponseInterface
     {

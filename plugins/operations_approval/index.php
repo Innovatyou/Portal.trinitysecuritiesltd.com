@@ -134,3 +134,6 @@ $routes->post('customersapi/operations/requests/(:num)/decision', '\operations_a
 $routes->post('customersapi/operations/requests/(:num)/comment', '\operations_approval\Controllers\Operations_api::comment/$1');
 $routes->post('customersapi/operations/requests/(:num)/information', '\operations_approval\Controllers\Operations_api::information/$1');
 $routes->post('customersapi/operations/requests/(:num)/resubmit', '\operations_approval\Controllers\Operations_api::resubmit/$1');
+$routes->post('customersapi/operations/requests/(:num)/cancel', '\operations_approval\Controllers\Operations_api::cancel/$1');
+$routes->post('customersapi/operations/requests/(:num)/attachments', '\operations_approval\Controllers\Operations_api::upload/$1');
+$routes->get('customersapi/operations/attachments/(:num)/download', '\operations_approval\Controllers\Operations_api::download/$1');

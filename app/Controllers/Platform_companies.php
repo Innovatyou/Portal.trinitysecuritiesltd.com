@@ -89,4 +89,50 @@ class Platform_companies extends Platform_base {
         session()->setFlashdata('success', $message);
         return redirect()->to(site_url('platform_companies'));
     }
+
+    // Shows the confirm page - never deletes anything itself. destroy()
+    // is the only action that actually removes a tenant, and only once
+    // the typed slug matches.
+    function destroy_confirm($id) {
+        if ($redirect = $this->require_login()) {
+            return $redirect;
+        }
+
+        $company = $this->landlord->table('tenants')->where('id', (int) $id)->get()->getRow();
+        if (!$company) {
+            session()->setFlashdata('error', 'Unknown company.');
+            return redirect()->to(site_url('platform_companies'));
+        }
+
+        return view('platform/companies_destroy_confirm', ['company' => $company]);
+    }
+
+    function destroy() {
+        if ($redirect = $this->require_login()) {
+            return $redirect;
+        }
+
+        $id = (int) $this->request->getPost('id');
+        $company = $this->landlord->table('tenants')->where('id', $id)->get()->getRow();
+
+        if (!$company) {
+            session()->setFlashdata('error', 'Unknown company.');
+            return redirect()->to(site_url('platform_companies'));
+        }
+
+        if ((string) $this->request->getPost('confirm_slug') !== $company->slug) {
+            session()->setFlashdata('error', "That didn't match \"{$company->slug}\" - nothing was deleted.");
+            return redirect()->to(site_url('platform_companies/destroy_confirm/' . $id));
+        }
+
+        $result = (new Tenant_provisioning())->deprovision($company->slug);
+
+        if (!$result['success']) {
+            session()->setFlashdata('error', $result['message']);
+            return redirect()->to(site_url('platform_companies'));
+        }
+
+        session()->setFlashdata('success', "\"{$company->name}\" and its database have been permanently deleted.");
+        return redirect()->to(site_url('platform_companies'));
+    }
 }

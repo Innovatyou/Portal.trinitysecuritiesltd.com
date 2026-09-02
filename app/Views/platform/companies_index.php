@@ -24,6 +24,8 @@ th{color:#94a3b8;font-weight:normal}
 .top{display:flex;justify-content:space-between;align-items:center}
 .domain-row{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 button.issue{background:none;border:1px solid #334155;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer}
+a.delete-link{color:#f87171;font-size:12px;text-decoration:none}
+a.delete-link:hover{text-decoration:underline}
 </style>
 </head>
 <body>
@@ -34,7 +36,7 @@ button.issue{background:none;border:1px solid #334155;color:#93c5fd;border-radiu
 <?php if (session()->getFlashdata('success')) : ?><div class="flash flash-success"><?= esc(session()->getFlashdata('success')) ?></div><?php endif; ?>
 <?php if (session()->getFlashdata('error')) : ?><div class="flash flash-error"><?= esc(session()->getFlashdata('error')) ?></div><?php endif; ?>
 <table>
-<thead><tr><th>Name</th><th>Slug</th><th>Domain(s) / SSL</th><th>Status</th><th>Created</th></tr></thead>
+<thead><tr><th>Name</th><th>Slug</th><th>Domain(s) / SSL</th><th>Status</th><th>Created</th><th></th></tr></thead>
 <tbody>
 <?php foreach ($companies as $c) : ?>
 <tr>
@@ -56,9 +58,10 @@ button.issue{background:none;border:1px solid #334155;color:#93c5fd;border-radiu
 </td>
 <td><span class="status status-<?= esc($c->status) ?>"><?= esc($c->status) ?></span></td>
 <td><?= esc($c->created_at) ?></td>
+<td><a class="delete-link" href="<?= site_url('platform_companies/destroy_confirm/' . $c->id) ?>">Delete</a></td>
 </tr>
 <?php endforeach; ?>
-<?php if (!count($companies)) : ?><tr><td colspan="5">No companies yet.</td></tr><?php endif; ?>
+<?php if (!count($companies)) : ?><tr><td colspan="6">No companies yet.</td></tr><?php endif; ?>
 </tbody>
 </table>
 </body>

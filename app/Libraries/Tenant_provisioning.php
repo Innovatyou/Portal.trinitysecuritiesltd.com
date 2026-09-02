@@ -41,6 +41,56 @@ class Tenant_provisioning {
     }
 
     /**
+     * Permanently destroys a tenant: drops its database and MySQL user,
+     * deletes its uploaded files, and removes its landlord records. There
+     * is no undo - callers are responsible for confirming intent (see
+     * Platform_companies::destroy_confirm/destroy, which requires typing
+     * the slug back before this ever runs).
+     *
+     * @return array{success: bool, message?: string}
+     */
+    public function deprovision(string $slug): array {
+        $landlord = db_connect('landlord');
+        $tenant = $landlord->table('tenants')->where('slug', $slug)->get()->getRow();
+
+        if (!$tenant) {
+            return ['success' => false, 'message' => "No tenant with slug '{$slug}'."];
+        }
+
+        $admin_config = config('Database')->landlord;
+        $mysqli = new \mysqli($admin_config['hostname'], $admin_config['username'], $admin_config['password'], '', (int) $admin_config['port']);
+        if ($mysqli->connect_errno) {
+            return ['success' => false, 'message' => "Could not connect to MySQL as an admin user: {$mysqli->connect_error}"];
+        }
+
+        // Backtick-quoted identifiers can't be parameterized; db_database
+        // and db_username are values this app generated itself at
+        // provisioning time (tenant_<slug> / tenant_<slug>_<hex>), never
+        // user-supplied at this point, so this mirrors how provision()
+        // already builds the equivalent CREATE DATABASE/USER statements.
+        $mysqli->query("DROP DATABASE IF EXISTS `{$tenant->db_database}`");
+        $mysqli->query("DROP USER IF EXISTS '{$tenant->db_username}'@'%'");
+        $mysqli->close();
+
+        $upload_dir = FCPATH . $tenant->system_file_path;
+        if (is_dir($upload_dir)) {
+            helper('filesystem');
+            delete_files($upload_dir, true);
+        }
+
+        $landlord->transStart();
+        $landlord->table('tenant_domains')->where('tenant_id', $tenant->id)->delete();
+        $landlord->table('tenants')->where('id', $tenant->id)->delete();
+        $landlord->transComplete();
+
+        if (!$landlord->transStatus()) {
+            return ['success' => false, 'message' => 'The database and files were removed, but the landlord record could not be deleted - check tenants/tenant_domains manually.'];
+        }
+
+        return ['success' => true];
+    }
+
+    /**
      * @param array $data name, slug, domain, admin_first, admin_last, admin_email, admin_password
      * @return array{success: bool, message?: string, tenant_id?: int, domain?: string}
      */

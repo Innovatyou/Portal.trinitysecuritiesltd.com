@@ -73,6 +73,12 @@ class Operations_api extends ResourceController
         $request['attachments']=$this->db->table($this->p.'oa_attachments')->select('id,original_name,mime_type,size_bytes,context,created_at')->where(['request_id'=>$id,'deleted_at'=>null])->orderBy('created_at')->get()->getResultArray();
         $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRowArray():null;$request['active_assignment']=$assignment;$request['can_decide']=(bool)$assignment;
         $request['can_resubmit']=(int)$request['requester_id']===(int)$user->id&&$request['status']==='returned';
+        if($request['can_resubmit']){
+            $resubmitFields=$this->availableFields($this->db->table($this->p.'oa_fields')->select('id,field_key,label,field_type,is_required,config_json')->where('version_id',$request['version_id'])->orderBy('position')->get()->getResultArray());
+            foreach($resubmitFields as &$resubmitField){$fieldConfig=json_decode($resubmitField['config_json']?:'{}',true)?:[];$resubmitField['editable_on_return']=!array_key_exists('editable_on_return',$fieldConfig)||!empty($fieldConfig['editable_on_return']);}
+            $request['fields']=$resubmitFields;
+        }
+        $request['can_cancel']=(int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','submitted','pending_approval','returned','information_requested'],true);
         $openConversation=$request['status']==='information_requested'?$this->db->table($this->p.'oa_conversations')->where(['request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRowArray():null;
         $request['can_respond_information']=(bool)$openConversation;
         $request['open_conversation_id']=$openConversation['id']??null;

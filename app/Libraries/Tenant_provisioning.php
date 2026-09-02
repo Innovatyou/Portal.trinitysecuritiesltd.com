@@ -205,6 +205,26 @@ class Tenant_provisioning {
              ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`)"
         );
 
+        // install/database.sql seeds zero roles - only the admin user
+        // created above can do anything until someone builds a role by
+        // hand. Confirmed directly: a plain staff account with no role has
+        // every operations_* permission key missing, so
+        // Operations_permissions::allowed() denies everything - the mobile
+        // app would work for the one provisioning admin and nobody else
+        // the company adds. Seed a baseline "Staff" role covering the
+        // minimum every employee needs (submit requests, see their own,
+        // comment) - deliberately NOT approval/admin permissions, which
+        // should stay a deliberate assignment per the company's own
+        // approval structure, not a blanket default.
+        $staff_permissions = serialize([
+            'operations_create_request' => '1',
+            'operations_view_own_requests' => '1',
+            'operations_comment' => '1',
+        ]);
+        $tenant_mysqli->query(
+            "INSERT INTO `{$db_prefix}roles` (`title`, `permissions`, `deleted`) VALUES ('Staff', '" . $tenant_mysqli->real_escape_string($staff_permissions) . "', 0)"
+        );
+
         $tenant_mysqli->close();
 
         $plugin_warnings = $this->install_active_plugins($admin_config, $db_database, $db_username, $db_password);

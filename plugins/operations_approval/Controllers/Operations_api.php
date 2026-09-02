@@ -237,7 +237,27 @@ class Operations_api extends ResourceController
     {
         $queryToken=(string)$this->request->getGet('access_token');
         if($queryToken&&!isset($_SERVER['HTTP_X_AUTHORIZATION']))$_SERVER['HTTP_X_AUTHORIZATION']=$queryToken;
-        if(!$this->secret||!class_exists(JWT::class))return null;$header=$this->request->getHeaderLine('Authorization')?:$this->request->getHeaderLine('X-Authorization');if(!$header)$header=(string)($_SERVER['HTTP_AUTHORIZATION']??$_SERVER['REDIRECT_HTTP_AUTHORIZATION']??$_SERVER['HTTP_X_AUTHORIZATION']??'');if(!$header&&function_exists('apache_request_headers')){$headers=apache_request_headers();$header=(string)($headers['Authorization']??$headers['authorization']??$headers['X-Authorization']??'');}$token=preg_replace('/^Bearer\s+/i','',trim($header));if(!$token)return null;try{$jwt=JWT::decode($token,new Key($this->secret,'HS256'));$email=$jwt->data->email??'';$user=$this->users->get_one_where(['email'=>$email,'deleted'=>0]);if(!$user->id||$user->status!=='active')return null;$permissionData=$user->permissions??null;if($permissionData){$p=@unserialize($permissionData);$user->permissions=is_array($p)?$p:[];}else$user->permissions=[];return $user;}catch(\Throwable $e){return null;}
+        if(!$this->secret||!class_exists(JWT::class))return null;$header=$this->request->getHeaderLine('Authorization')?:$this->request->getHeaderLine('X-Authorization');if(!$header)$header=(string)($_SERVER['HTTP_AUTHORIZATION']??$_SERVER['REDIRECT_HTTP_AUTHORIZATION']??$_SERVER['HTTP_X_AUTHORIZATION']??'');if(!$header&&function_exists('apache_request_headers')){$headers=apache_request_headers();$header=(string)($headers['Authorization']??$headers['authorization']??$headers['X-Authorization']??'');}$token=preg_replace('/^Bearer\s+/i','',trim($header));if(!$token)return null;try{
+    $jwt=JWT::decode($token,new Key($this->secret,'HS256'));
+    $email=$jwt->data->email??'';
+    $basicUser=$this->users->get_one_where(['email'=>$email,'deleted'=>0]);
+    if(!$basicUser->id||$basicUser->status!=='active')return null;
+    // get_one_where() is a plain row from `users` - it has no permissions
+    // column of its own (only client_permissions, for client-type users'
+    // per-client access). A staff member's permissions live on their
+    // *role*, joined via role_id. get_access_info() is the same lookup
+    // Security_Controller uses for the web app, so mobile and web resolve
+    // permissions identically instead of this route silently having its
+    // own, broken, always-empty version. Confirmed directly: without this,
+    // a non-admin staff user assigned a role with operations_create_request
+    // still got can_create:false from every mobile endpoint - permissions
+    // were never actually loaded, so nothing but is_admin users could do
+    // anything via the app.
+    $user=$this->users->get_access_info($basicUser->id);
+    $permissionData=$user->permissions??null;
+    if($permissionData){$p=@unserialize($permissionData);$user->permissions=is_array($p)?$p:[];}else$user->permissions=[];
+    return $user;
+}catch(\Throwable $e){return null;}
     }
     private function unauthorized():ResponseInterface{return $this->respond(['success'=>false,'message'=>'Unauthorized. Token is missing or invalid.'],401);}
     private function requestRow(int $id):?array{$row=$this->db->table($this->p.'oa_requests r')->select('r.*,w.name workflow_name,i.name_snapshot current_stage,i.lock_version stage_lock_version')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->join($this->p.'oa_stage_instances i','i.id=r.current_stage_instance_id','left')->where(['r.id'=>$id,'r.deleted'=>0])->get()->getRowArray();return $row?:null;}

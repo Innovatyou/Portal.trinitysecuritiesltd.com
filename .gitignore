@@ -17,3 +17,6 @@
 # OS/editor cruft
 .DS_Store
 Thumbs.db
+
+# Claude Code session state - not project code
+/.claude/

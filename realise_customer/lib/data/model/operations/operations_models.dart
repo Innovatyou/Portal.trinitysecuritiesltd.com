@@ -18,8 +18,18 @@ class OperationsDetail {
   OperationsDetail(this.raw);
   OperationsRequest get request=>OperationsRequest.fromJson(raw);
   bool get canDecide=>raw['can_decide']==true;
+  bool get canResubmit=>raw['can_resubmit']==true;
+  bool get canRespondInformation=>raw['can_respond_information']==true;
+  int? get openConversationId=>int.tryParse('${raw['open_conversation_id']}');
   Map<String,dynamic>? get assignment=>raw['active_assignment'] is Map?Map<String,dynamic>.from(raw['active_assignment']):null;
   List<Map<String,dynamic>> get values=>List<Map<String,dynamic>>.from(raw['values']??const[]);
   List<Map<String,dynamic>> get timeline=>List<Map<String,dynamic>>.from(raw['timeline']??const[]);
   List<Map<String,dynamic>> get comments=>List<Map<String,dynamic>>.from(raw['comments']??const[]);
+  List<Map<String,dynamic>> get conversations=>List<Map<String,dynamic>>.from(raw['conversations']??const[]);
+  /// The still-open conversation this requester needs to answer, if any.
+  Map<String,dynamic>? get openConversation{
+    if(openConversationId==null) return null;
+    for(final c in conversations){if(int.tryParse('${c['id']}')==openConversationId) return c;}
+    return null;
+  }
 }

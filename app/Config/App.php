@@ -15,7 +15,14 @@ class App extends BaseConfig {
     private function set_base_url() {
         if (!$this->baseURL) {
 
-            $domain = $_SERVER['HTTP_HOST'] . $_SERVER['SCRIPT_NAME'];
+            if (!isset($_SERVER['HTTP_HOST'])) {
+                // CLI context (spark commands, cron via CLI, etc.) - no request to derive a
+                // host from, but SiteURI still requires a syntactically valid absolute URL.
+                $this->baseURL = 'http://localhost/';
+                return;
+            }
+
+            $domain = $_SERVER['HTTP_HOST'] . ($_SERVER['SCRIPT_NAME'] ?? '');
 
             $domain = preg_replace('/index.php.*/', '', $domain);
             $domain = strtolower($domain);

@@ -120,8 +120,18 @@ if (!function_exists('get_allowed_mailboxes_ids')) {
             "user_id" => $instance->login_user->id,
         );
 
-        $Mailboxes_model = new \Mailbox\Models\Mailboxes_model();
-        $allowed_mailboxes = $Mailboxes_model->get_details($options)->getResult();
+        try {
+            $Mailboxes_model = new \Mailbox\Models\Mailboxes_model();
+            $allowed_mailboxes = $Mailboxes_model->get_details($options)->getResult();
+        } catch (\Throwable $e) {
+            // Mailbox is activated app-wide (app/Config/activated_plugins.json)
+            // but its tables are per-tenant; a company that hasn't had Mailbox
+            // provisioned into its own database would otherwise crash this on
+            // every page load, since this runs from app_filter_staff_left_menu.
+            // Degrade to "no mailboxes" instead of breaking the dashboard.
+            log_message('warning', 'get_allowed_mailboxes_ids: {msg}', ['msg' => $e->getMessage()]);
+            return array();
+        }
 
         $allowed_mailboxes_ids = array();
         foreach ($allowed_mailboxes as $allowed_mailbox) {

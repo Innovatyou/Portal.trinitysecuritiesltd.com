@@ -58,16 +58,16 @@ CREATE TABLE IF NOT EXISTS `{DB_PREFIX}oa_email_templates` (
  `body` LONGTEXT NOT NULL, `updated_by` BIGINT UNSIGNED NULL, `updated_at` DATETIME NULL, PRIMARY KEY (`event`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN IF NOT EXISTS `return_stage_instance_id` BIGINT UNSIGNED NULL AFTER `current_stage_instance_id`;
-ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN IF NOT EXISTS `return_strategy` VARCHAR(30) NULL AFTER `return_stage_instance_id`;
-ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN IF NOT EXISTS `test_mode` TINYINT(1) NOT NULL DEFAULT 0 AFTER `priority`;
-ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN IF NOT EXISTS `cancelled_at` DATETIME NULL AFTER `completed_at`;
-ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN IF NOT EXISTS `storage_path` VARCHAR(500) NOT NULL DEFAULT '' AFTER `storage_name`;
-ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN IF NOT EXISTS `context` VARCHAR(30) NOT NULL DEFAULT 'request' AFTER `comment_id`;
-ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN IF NOT EXISTS `replaced_attachment_id` BIGINT UNSIGNED NULL AFTER `version_no`;
-ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN IF NOT EXISTS `reminder_sent_at` DATETIME NULL AFTER `due_at`;
-ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN IF NOT EXISTS `escalated_at` DATETIME NULL AFTER `reminder_sent_at`;
-ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN IF NOT EXISTS `cycle_no` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`;
+ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN `return_stage_instance_id` BIGINT UNSIGNED NULL AFTER `current_stage_instance_id`;
+ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN `return_strategy` VARCHAR(30) NULL AFTER `return_stage_instance_id`;
+ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN `test_mode` TINYINT(1) NOT NULL DEFAULT 0 AFTER `priority`;
+ALTER TABLE `{DB_PREFIX}oa_requests` ADD COLUMN `cancelled_at` DATETIME NULL AFTER `completed_at`;
+ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN `storage_path` VARCHAR(500) NOT NULL DEFAULT '' AFTER `storage_name`;
+ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN `context` VARCHAR(30) NOT NULL DEFAULT 'request' AFTER `comment_id`;
+ALTER TABLE `{DB_PREFIX}oa_attachments` ADD COLUMN `replaced_attachment_id` BIGINT UNSIGNED NULL AFTER `version_no`;
+ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN `reminder_sent_at` DATETIME NULL AFTER `due_at`;
+ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN `escalated_at` DATETIME NULL AFTER `reminder_sent_at`;
+ALTER TABLE `{DB_PREFIX}oa_stage_instances` ADD COLUMN `cycle_no` INT UNSIGNED NOT NULL DEFAULT 1 AFTER `status`;
 
 INSERT IGNORE INTO `{DB_PREFIX}oa_settings` (`setting_key`,`setting_value`) VALUES
  ('allowed_extensions','pdf,doc,docx,xls,xlsx,png,jpg,jpeg,txt,csv'),('max_file_size_mb','10'),('default_page_size','25'),

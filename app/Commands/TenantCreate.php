@@ -55,5 +55,13 @@ class TenantCreate extends BaseCommand {
         CLI::write("Domain:      http://{$result['domain']}/");
         CLI::write("Admin login: {$data['admin_email']}");
         CLI::write('(Admin password is the one you passed via --admin-password.)');
+
+        if (!empty($result['plugin_warnings'])) {
+            CLI::newLine();
+            CLI::write('Plugin setup issues (tenant is otherwise ready):', 'yellow');
+            foreach ($result['plugin_warnings'] as $warning) {
+                CLI::write("  - {$warning}");
+            }
+        }
     }
 }

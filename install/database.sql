@@ -1117,6 +1117,7 @@ CREATE TABLE IF NOT EXISTS `reminder_logs` (
   `reminder_event` varchar(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci DEFAULT NULL,
   `notification_status` enum('draft','completed') CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL DEFAULT 'draft',
   `reminder_date` date DEFAULT NULL,
+  `reminder_time` time DEFAULT NULL,
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;

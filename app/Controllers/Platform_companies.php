@@ -2,6 +2,7 @@
 
 namespace App\Controllers;
 
+use App\Libraries\Ssl_issuer;
 use App\Libraries\Tenant_provisioning;
 
 class Platform_companies extends Platform_base {
@@ -22,7 +23,35 @@ class Platform_companies extends Platform_base {
             ->orderBy('t.created_at', 'DESC')
             ->get()->getResult();
 
-        return view('platform/companies_index', ['companies' => $companies]);
+        $domains = $this->landlord->table('tenant_domains')->get()->getResult();
+
+        return view('platform/companies_index', ['companies' => $companies, 'domains' => $domains]);
+    }
+
+    // Manually triggered once a domain's DNS is confirmed pointed at this
+    // server - see Phase 3 in the SaaS plan for why this isn't auto-polled.
+    function issue_ssl() {
+        if ($redirect = $this->require_login()) {
+            return $redirect;
+        }
+
+        $domain_id = (int) $this->request->getPost('domain_id');
+        $domain_row = $this->landlord->table('tenant_domains')->where('id', $domain_id)->get()->getRow();
+
+        if (!$domain_row) {
+            session()->setFlashdata('error', 'Unknown domain.');
+            return redirect()->to(site_url('platform_companies'));
+        }
+
+        $result = (new Ssl_issuer())->issue($domain_row->domain, FCPATH);
+
+        $this->landlord->table('tenant_domains')->where('id', $domain_id)->update([
+            'ssl_status' => $result['success'] ? 'issued' : 'failed',
+            'verified_at' => $result['success'] ? date('Y-m-d H:i:s') : null,
+        ]);
+
+        session()->setFlashdata($result['success'] ? 'success' : 'error', $result['message']);
+        return redirect()->to(site_url('platform_companies'));
     }
 
     function create() {
@@ -53,7 +82,11 @@ class Platform_companies extends Platform_base {
             return view('platform/companies_create', ['error' => $result['message'], 'old' => $data]);
         }
 
-        session()->setFlashdata('success', "\"{$data['name']}\" is live at http://{$result['domain']}/");
+        $message = "\"{$data['name']}\" is live at http://{$result['domain']}/";
+        if (!empty($result['plugin_warnings'])) {
+            $message .= ' (plugin setup issues: ' . implode('; ', $result['plugin_warnings']) . ')';
+        }
+        session()->setFlashdata('success', $message);
         return redirect()->to(site_url('platform_companies'));
     }
 }

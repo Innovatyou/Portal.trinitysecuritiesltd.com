@@ -64,7 +64,7 @@ class Tenant_resolver {
         $path = preg_replace('#^/index\.php#', '', $path);
         $path = ltrim($path, '/');
 
-        if ($path === '' || !str_starts_with($path, 'platform_')) {
+        if ($path === '' || (!str_starts_with($path, 'platform_') && !str_starts_with($path, 'group_'))) {
             // Built directly from the current host rather than base_url() -
             // this runs in pre_system, before routing/URI services are
             // guaranteed ready.

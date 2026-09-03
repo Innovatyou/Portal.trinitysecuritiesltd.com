@@ -73,3 +73,58 @@ CREATE TABLE IF NOT EXISTS `tenant_provisioning_jobs` (
   KEY `tenant_id` (`tenant_id`),
   CONSTRAINT `tenant_provisioning_jobs_tenant_id_fk` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A "Group MD" - one login that can be granted admin access into several
+-- companies (each its own separate database) and switch between them. Kept
+-- entirely separate from platform_admins: a platform admin manages the list
+-- of companies on this SaaS, a group admin does real business/admin work
+-- inside specific companies they've been granted. See app/Controllers/
+-- Group_auth.php, Group_portal.php, Group_sso.php, Platform_group_admins.php.
+CREATE TABLE IF NOT EXISTS `group_admins` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `first_name` VARCHAR(100) NOT NULL,
+  `last_name` VARCHAR(100) NOT NULL,
+  `email` VARCHAR(191) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `last_login_at` DATETIME NULL,
+  `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Which companies a group admin can switch into, and which tenant-side
+-- users.id they land as there. created_by_grant distinguishes an account
+-- this grant created (safe to deactivate on revoke) from one that already
+-- existed under a matching email (revoke must only remove the switching
+-- privilege, never touch someone else's real account).
+CREATE TABLE IF NOT EXISTS `group_admin_access` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `group_admin_id` INT UNSIGNED NOT NULL,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `tenant_user_id` INT UNSIGNED NOT NULL,
+  `created_by_grant` TINYINT(1) NOT NULL DEFAULT 1,
+  `granted_by` INT UNSIGNED NULL,
+  `granted_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `group_admin_tenant` (`group_admin_id`,`tenant_id`),
+  CONSTRAINT `gaa_group_admin_fk` FOREIGN KEY (`group_admin_id`) REFERENCES `group_admins` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `gaa_tenant_fk` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Short-lived, single-use, tenant-bound handoff tokens: Group_portal mints
+-- one when a group admin picks a company, Group_sso consumes it on that
+-- company's own domain to establish a normal session there. Never reused
+-- across companies or requests - see Group_sso::consume().
+CREATE TABLE IF NOT EXISTS `group_admin_sso_tokens` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `token` VARCHAR(191) NOT NULL,
+  `group_admin_id` INT UNSIGNED NOT NULL,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `tenant_user_id` INT UNSIGNED NOT NULL,
+  `expires_at` DATETIME NOT NULL,
+  `used_at` DATETIME NULL,
+  `created_at` DATETIME NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `token` (`token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

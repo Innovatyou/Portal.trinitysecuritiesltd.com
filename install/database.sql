@@ -216,6 +216,7 @@ CREATE TABLE IF NOT EXISTS `contracts` (
   `files` mediumtext CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -373,6 +374,7 @@ CREATE TABLE IF NOT EXISTS `estimates` (
   `public_key` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -887,6 +889,7 @@ CREATE TABLE IF NOT EXISTS `orders` (
   `company_id` int NOT NULL DEFAULT '0',
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
   `created_by_hash` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -1107,6 +1110,7 @@ CREATE TABLE IF NOT EXISTS `proposals` (
   `company_id` int NOT NULL DEFAULT '0',
   `project_id` int DEFAULT '0',
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -1227,6 +1231,7 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `stripe_subscription_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   `stripe_product_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   `stripe_product_price_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci;
 
@@ -1390,6 +1395,7 @@ CREATE TABLE IF NOT EXISTS `tickets` (
   `closed_at` datetime NOT NULL,
   `merged_with_ticket_id` int NOT NULL,
   `deleted` tinyint(1) NOT NULL DEFAULT '0',
+  `display_id` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   PRIMARY KEY (`id`),
   KEY `client_id` (`client_id`),
   KEY `ticket_type_id` (`ticket_type_id`),

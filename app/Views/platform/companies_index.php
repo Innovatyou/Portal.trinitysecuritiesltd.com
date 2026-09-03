@@ -26,9 +26,12 @@ th{color:#94a3b8;font-weight:normal}
 button.issue{background:none;border:1px solid #334155;color:#93c5fd;border-radius:4px;padding:2px 8px;font-size:12px;cursor:pointer}
 a.delete-link{color:#f87171;font-size:12px;text-decoration:none}
 a.delete-link:hover{text-decoration:underline}
+.nav{margin-bottom:12px}
+.nav a{color:#94a3b8;font-size:13px;text-decoration:none;margin-right:16px}
 </style>
 </head>
 <body>
+<div class="nav"><a href="<?= site_url('platform_companies') ?>" style="color:#e2e8f0">Companies</a><a href="<?= site_url('platform_group_admins') ?>">Group admins</a></div>
 <div class="top">
 <h1 style="margin:0">Companies</h1>
 <div><a class="btn" href="<?= site_url('platform_companies/create') ?>">+ Add company</a> &nbsp; <a class="logout" href="<?= site_url('platform_auth/logout') ?>">Sign out</a></div>

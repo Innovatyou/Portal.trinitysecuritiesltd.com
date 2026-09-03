@@ -180,6 +180,12 @@
 
                             <?php } ?>
 
+                            <?php $group_admin_switch_url = session()->get('group_admin_switch_url'); ?>
+                            <?php if ($group_admin_switch_url) { ?>
+                                <li class="dropdown-divider"></li>
+                                <li><a href="<?php echo esc($group_admin_switch_url); ?>" class="dropdown-item"><i data-feather="repeat" class='icon-16 me-2'></i> Switch company</a></li>
+                            <?php } ?>
+
                             <li class="dropdown-divider"></li>
                             <li><a href="<?php echo_uri('signin/sign_out'); ?>" class="dropdown-item"><i data-feather="log-out" class='icon-16 me-2'></i> <?php echo app_lang('sign_out'); ?></a></li>
                         </ul>

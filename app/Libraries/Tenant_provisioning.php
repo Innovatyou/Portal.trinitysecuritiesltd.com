@@ -41,6 +41,86 @@ class Tenant_provisioning {
     }
 
     /**
+     * Opens a direct mysqli connection to one tenant's own database, using
+     * its own stored (encrypted-at-rest) credentials - the same connection
+     * every raw-SQL tenant operation in this file needs (role seeding,
+     * plugin install, and now group-admin user provisioning). Extracted
+     * from what retrofit_plugins()/provision() were already doing inline.
+     */
+    public function connect_tenant(object $tenant): \mysqli {
+        $db_password = service('encrypter')->decrypt(base64_decode($tenant->db_password_encrypted));
+        $mysqli = new \mysqli($tenant->db_hostname, $tenant->db_username, $db_password, $tenant->db_database, (int) $tenant->db_port);
+        if ($mysqli->connect_errno) {
+            throw new \RuntimeException("Could not connect to tenant '{$tenant->slug}': {$mysqli->connect_error}");
+        }
+        return $mysqli;
+    }
+
+    /**
+     * Gives a group admin a real staff account inside one tenant's own
+     * database - the only thing Group_sso's SSO bridge is allowed to log
+     * into (see app/Controllers/Group_sso.php), since every existing
+     * controller/model in this app authorizes and attributes actions off a
+     * real per-tenant users.id, not a landlord-level identity.
+     *
+     * Reuses an existing users row if this email already has one in that
+     * tenant (same person already has their own staff account there -
+     * revoking access later must NOT deactivate someone else's real
+     * account, see deactivate_tenant_user()). Otherwise creates one,
+     * mirroring the exact column set install/database.sql's own admin-seed
+     * row uses. disable_login=1 and a NULL password mean the SSO bridge is
+     * the only way into this account - it can't be reached by password or
+     * password-reset, keeping the "one login" promise real.
+     *
+     * @return array{tenant_user_id: int, created: bool}
+     */
+    public function link_or_create_group_admin_user(object $tenant, object $group_admin): array {
+        $mysqli = $this->connect_tenant($tenant);
+        $db_prefix = $tenant->db_prefix;
+
+        $email_escaped = $mysqli->real_escape_string($group_admin->email);
+        $existing = $mysqli->query("SELECT `id` FROM `{$db_prefix}users` WHERE `email` = '{$email_escaped}' LIMIT 1");
+        if ($existing && $existing->num_rows > 0) {
+            $tenant_user_id = (int) $existing->fetch_object()->id;
+            $mysqli->close();
+            return ['tenant_user_id' => $tenant_user_id, 'created' => false];
+        }
+
+        $first = $mysqli->real_escape_string($group_admin->first_name);
+        $last = $mysqli->real_escape_string($group_admin->last_name);
+        $now = $mysqli->real_escape_string(date('Y-m-d H:i:s'));
+
+        $mysqli->query(
+            "INSERT INTO `{$db_prefix}users`
+                (`first_name`, `last_name`, `user_type`, `is_admin`, `role_id`, `email`, `password`,
+                 `status`, `client_id`, `is_primary_contact`, `job_title`, `disable_login`, `language`,
+                 `enable_web_notification`, `enable_email_notification`, `created_at`, `deleted`)
+             VALUES
+                ('{$first}', '{$last}', 'staff', 1, 0, '{$email_escaped}', NULL,
+                 'active', 0, 0, 'Group Administrator', 1, '',
+                 1, 1, '{$now}', 0)"
+        );
+        $tenant_user_id = (int) $mysqli->insert_id;
+        $mysqli->close();
+
+        return ['tenant_user_id' => $tenant_user_id, 'created' => true];
+    }
+
+    /**
+     * Immediately revokes a group admin's real access inside one tenant, by
+     * deactivating the users row link_or_create_group_admin_user() created
+     * for them there. Only ever call this when that grant's
+     * created_by_grant flag is true - a linked pre-existing account belongs
+     * to someone else's own login and must be left alone.
+     */
+    public function deactivate_tenant_user(object $tenant, int $tenant_user_id): void {
+        $mysqli = $this->connect_tenant($tenant);
+        $db_prefix = $tenant->db_prefix;
+        $mysqli->query("UPDATE `{$db_prefix}users` SET `status` = 'inactive' WHERE `id` = " . (int) $tenant_user_id);
+        $mysqli->close();
+    }
+
+    /**
      * Permanently destroys a tenant: drops its database and MySQL user,
      * deletes its uploaded files, and removes its landlord records. There
      * is no undo - callers are responsible for confirming intent (see

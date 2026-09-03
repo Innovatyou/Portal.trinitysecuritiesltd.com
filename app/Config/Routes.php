@@ -15,7 +15,7 @@ $routes->get('/', 'Dashboard::index');
 $routes->add('about/(:any)', 'About::index/$1');
 
 //add routing for controllers
-$excluded_controllers = array("About", "App_Controller", "Security_Controller", "Platform_base");
+$excluded_controllers = array("About", "App_Controller", "Security_Controller", "Platform_base", "Group_base");
 $controller_dropdown = array();
 $dir = "./app/Controllers/";
 if (is_dir($dir)) {

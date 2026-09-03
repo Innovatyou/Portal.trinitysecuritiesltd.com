@@ -616,6 +616,21 @@ var registerAppTableRowDeleteHook = function (tableId, onSuccess, hookType, cont
                                 data.push(checkboxes[checkoxKey]);
                             });
 
+                            // csrf_ajax.php injects the CSRF token via
+                            // $.ajaxSetup({data: ...}) - that only reaches a
+                            // plain $.ajax()/$.post() call. ajaxSubmit()
+                            // (jquery.form.js) builds its request body
+                            // exclusively from the form's own serialized
+                            // fields (options.data = q, overriding
+                            // $.ajaxSettings.data entirely) - confirmed live:
+                            // every appForm submission was going out with no
+                            // CSRF token at all, failing CSRF verification
+                            // 100% of the time whenever csrf_protection is
+                            // enabled, on every form using this helper.
+                            if (typeof AppHelper !== "undefined" && AppHelper.csrfTokenName && !data.some(function (obj) { return obj.name === AppHelper.csrfTokenName; })) {
+                                data.push({ name: AppHelper.csrfTokenName, value: AppHelper.csrfHash });
+                            }
+
                             if (removeIndexes.length > 0) {
                                 data = data.filter(function (obj, index) {
                                     // Return true to keep the field, false to remove it

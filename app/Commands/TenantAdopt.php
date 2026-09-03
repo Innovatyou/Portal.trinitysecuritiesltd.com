@@ -56,8 +56,8 @@ class TenantAdopt extends BaseCommand {
             return;
         }
 
-        if (!preg_match('/^[a-z][a-z0-9_]{2,40}$/', $slug)) {
-            CLI::error('Slug must be lowercase letters/digits/underscores, starting with a letter (3-41 chars).');
+        if (!preg_match('/^[a-z][a-z0-9_-]{2,40}$/', $slug)) {
+            CLI::error('Slug must be lowercase letters/digits/underscores/hyphens, starting with a letter (3-41 chars).');
             return;
         }
 

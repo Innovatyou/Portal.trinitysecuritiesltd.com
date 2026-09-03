@@ -1,4 +1,3 @@
-import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -322,48 +321,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(height: Dimensions.space20),
-                                  if (controller
-                                          .loginRepo.apiClient.sharedPreferences
-                                          .getString(
-                                        SharedPreferenceHelper
-                                            .disableRegistration,
-                                      ) !=
-                                      '1')
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Text(
-                                          LocalStrings.doNotHaveAccount.tr,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: regularLarge.copyWith(
-                                            color: Theme.of(context)
-                                                .textTheme
-                                                .bodyMedium!
-                                                .color!
-                                                .withValues(alpha: 0.5),
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                        ),
-                                        TextButton(
-                                          onPressed: () {
-                                            Get.offAndToNamed(
-                                              RouteHelper.registrationScreen,
-                                            );
-                                          },
-                                          child: Text(
-                                            LocalStrings.createAnAccount.tr,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: regularLarge.copyWith(
-                                              color:
-                                                  ColorResources.secondaryColor,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
                                 ],
                               ),
                             ),

@@ -15,10 +15,8 @@ class LoginController extends GetxController {
   final FocusNode emailFocusNode = FocusNode();
   final FocusNode passwordFocusNode = FocusNode();
 
-  TextEditingController emailController =
-      TextEditingController(text: 'customer@demo.com');
-  TextEditingController passwordController =
-      TextEditingController(text: '123456');
+  TextEditingController emailController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
 
   List<String> errors = [];
   String? email;

@@ -1,3 +1,4 @@
+import 'package:realise/core/helper/biometric_auth_helper.dart';
 import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:realise/data/controller/common/theme_controller.dart';
@@ -29,6 +30,22 @@ class MenuScreen extends StatefulWidget {
 }
 
 class _MenuScreenState extends State<MenuScreen> {
+  bool _biometricSupported = false;
+  bool _biometricEnabled = false;
+  late final ApiClient _apiClient;
+
+  @override
+  void initState() {
+    super.initState();
+    _apiClient = Get.put(ApiClient(sharedPreferences: Get.find()));
+    _biometricEnabled = _apiClient.sharedPreferences
+            .getBool(SharedPreferenceHelper.biometricEnabledKey) ??
+        false;
+    BiometricAuthHelper.isDeviceSupported().then((supported) {
+      if (mounted) setState(() => _biometricSupported = supported);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return GetBuilder<ThemeController>(builder: (theme) {
@@ -126,6 +143,53 @@ class _MenuScreenState extends State<MenuScreen> {
                             MyUtils.allScreensUtils(themeController.darkTheme);
                           },
                         ),
+                        if (_biometricSupported) ...[
+                          const CustomDivider(space: Dimensions.space10),
+                          SwitchListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: Dimensions.space10),
+                            title: Text(
+                              'Biometric sign-in',
+                              style: regularLarge.copyWith(
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium!
+                                      .color),
+                            ),
+                            secondary: Container(
+                              height: 35,
+                              width: 35,
+                              alignment: Alignment.center,
+                              child: Icon(Icons.fingerprint,
+                                  color: Theme.of(context)
+                                      .textTheme
+                                      .bodyMedium!
+                                      .color,
+                                  size: 22),
+                            ),
+                            activeColor: ColorResources.colorBlack,
+                            activeTrackColor:
+                                Theme.of(context).textTheme.bodyMedium!.color,
+                            value: _biometricEnabled,
+                            onChanged: (bool val) async {
+                              // Turning it on right away confirms the
+                              // device can actually scan the user, rather
+                              // than silently enabling something that then
+                              // fails every app open.
+                              if (val) {
+                                final ok = await BiometricAuthHelper
+                                    .authenticate(
+                                        reason:
+                                            'Verify it\'s you to enable biometric sign-in');
+                                if (!ok) return;
+                              }
+                              await _apiClient.sharedPreferences.setBool(
+                                  SharedPreferenceHelper.biometricEnabledKey,
+                                  val);
+                              setState(() => _biometricEnabled = val);
+                            },
+                          ),
+                        ],
                         const CustomDivider(space: Dimensions.space10),
                         MenuItems(
                             imageSrc: MyImages.policy,

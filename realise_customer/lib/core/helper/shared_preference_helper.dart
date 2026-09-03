@@ -32,6 +32,7 @@ class SharedPreferenceHelper {
 
   static const String theme = 'theme';
   static const String token = 'token';
+  static const String biometricEnabledKey = 'biometric-enabled-key';
 
   static const String countryCode = 'country_code';
   static const String languageCode = 'language_code';

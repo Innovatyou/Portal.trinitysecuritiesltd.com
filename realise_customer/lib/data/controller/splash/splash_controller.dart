@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:realise/core/helper/biometric_auth_helper.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:realise/core/utils/messages.dart';
 import 'package:realise/data/controller/localization/localization_controller.dart';
@@ -116,8 +117,26 @@ class SplashController extends GetxController {
       });
     } else {
       if (isRemember) {
-        Future.delayed(const Duration(seconds: 1), () {
-          Get.offAndToNamed(RouteHelper.dashboardScreen);
+        Future.delayed(const Duration(seconds: 1), () async {
+          final biometricEnabled = splashRepo.apiClient.sharedPreferences
+                  .getBool(SharedPreferenceHelper.biometricEnabledKey) ??
+              false;
+          // Biometric here only gates re-entry into an existing "remember
+          // me" session - it never replaces the actual login call, so a
+          // failed/cancelled scan just falls back to the normal login
+          // screen (the stored token/session is untouched either way).
+          if (biometricEnabled) {
+            final ok = await BiometricAuthHelper.authenticate(
+              reason: 'Verify it\'s you to continue',
+            );
+            if (ok) {
+              Get.offAndToNamed(RouteHelper.dashboardScreen);
+            } else {
+              Get.offAndToNamed(RouteHelper.loginScreen);
+            }
+          } else {
+            Get.offAndToNamed(RouteHelper.dashboardScreen);
+          }
         });
       } else {
         Future.delayed(const Duration(seconds: 1), () {

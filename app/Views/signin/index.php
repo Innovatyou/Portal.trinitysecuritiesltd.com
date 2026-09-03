@@ -33,7 +33,7 @@
         .workflow-form-title { margin:8px 0 5px;color:#17210f;font-size:28px;font-weight:800;letter-spacing:-.02em; }
         .workflow-form-subtitle { color:#6c7664;margin:0; }
         .signin-page footer { display:none; }
-        @media(max-width:991px){ .workflow-brand-panel{display:none}.signin-page .form-signin{width:100%;min-width:0;padding:28px 18px;background-image:linear-gradient(rgba(10,22,7,.68),rgba(246,250,233,.94) 48%),url('<?php echo base_url("assets/images/workflow-login-lagos.png"); ?>');background-size:cover;background-position:center top}.signin-page .form-signin .card{max-width:520px;width:100%;margin:auto}.signin-page .card-body{padding:18px 28px 32px!important} }
+        @media(max-width:991px){ .signin-page .scrollable-page{overflow-y:auto;height:auto}.workflow-brand-panel{display:none}.signin-page .form-signin{width:100%;min-width:0;padding:28px 18px;background-image:linear-gradient(rgba(10,22,7,.68),rgba(246,250,233,.94) 48%),url('<?php echo base_url("assets/images/workflow-login-lagos.png"); ?>');background-size:cover;background-position:center top}.signin-page .form-signin .card{max-width:520px;width:100%;margin:auto}.signin-page .card-body{padding:18px 28px 32px!important} }
     </style>
 
     <div class="scrollable-page">

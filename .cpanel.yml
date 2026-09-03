@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/admintsl/public_html/portal.trinitysecuritiesltd.com/
+    - /bin/cp -R * $DEPLOYPATH

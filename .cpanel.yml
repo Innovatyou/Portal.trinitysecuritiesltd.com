@@ -3,3 +3,8 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/admintsl/public_html/portal.trinitysecuritiesltd.com/
     - /bin/cp -R * $DEPLOYPATH
+    # `cp -R *` skips dotfiles (bash glob, no dotglob) - .htaccess is the one
+    # dotfile we actually want deployed. Copied explicitly and separately so
+    # a plain `git rm .env` mistake can never make this accidentally
+    # overwrite the real production .env, which must never come from git.
+    - /bin/cp -f .htaccess $DEPLOYPATH

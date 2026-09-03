@@ -28,14 +28,19 @@ class Database extends Config
 	/**
 	 * The default database connection.
 	 *
+	 * Real values come from .env (database.default.*), same convention as
+	 * $landlord below - moved out of source after this array's real
+	 * production credentials were found committed in plain text (this repo
+	 * is public on GitHub), unlike $landlord which was already .env-driven.
+	 *
 	 * @var array
 	 */
 	public $default = [
 		'DSN'      => '',
-		'hostname' => 'localhost',
-		'username' => 'admintsl_securitiesportaluser',
-		'password' => 'securitiesportaluser',
-		'database' => 'admintsl_securitiesportaldb',
+		'hostname' => 'enter_hostname',
+		'username' => 'enter_db_username',
+		'password' => 'enter_db_password',
+		'database' => 'enter_database_name',
 		'DBDriver' => 'MySQLi',
 		'DBPrefix' => 'tsl_',
 		'pConnect' => false,

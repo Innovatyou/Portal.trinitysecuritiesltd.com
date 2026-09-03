@@ -115,4 +115,20 @@ $custom_filters = @unserialize($custom_filters);
 
     AppHelper.processQuickActionUrl = "<?php echo get_uri("ai_client/process_quick_action"); ?>";
     AppHelper.aiAssistantMaxMessagesCount = "<?php echo get_setting("ai_assistant_max_messages_count"); ?>";
+
+    <?php if ($csrf_hash) { ?>
+    // The browser can restore this exact page from its back/forward cache
+    // instead of re-fetching it (confirmed happening in practice) - when it
+    // does, AppHelper.csrfHash above is whatever was embedded at the ORIGINAL
+    // page load, which can be stale by the time a form on it gets submitted,
+    // making every save on that restored page fail with a 403 and no
+    // explanation. Forcing a real reload on bfcache restore keeps the
+    // embedded token current instead.
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+    <?php } ?>
+
 </script>

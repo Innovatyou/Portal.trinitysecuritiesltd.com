@@ -691,6 +691,26 @@ var registerAppTableRowDeleteHook = function (tableId, onSuccess, hookType, cont
                             }
 
                             $(form).find('[type="submit"]').removeAttr('disabled');
+                        },
+                        error: function () {
+                            // Without this, a non-2xx response (CSRF token
+                            // expired/mismatched, session timed out, a
+                            // server error) fires neither success nor any
+                            // other callback here - the loader/mask stays
+                            // up forever and the submit button stays
+                            // disabled, with no indication anything went
+                            // wrong. Confirmed live: a stale page (e.g.
+                            // restored from the browser's back/forward
+                            // cache) submitting an outdated CSRF token gets
+                            // a 403 that silently "does nothing" from the
+                            // user's point of view.
+                            appLoader.hide();
+                            if (settings.isModal) {
+                                unmaskModal();
+                            } else {
+                                $(form).find('[type="submit"]').removeAttr('disabled');
+                            }
+                            appAlert.error(AppLanguage.somethingWentWrong);
                         }
                     });
                 });

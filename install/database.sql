@@ -1017,6 +1017,8 @@ CREATE TABLE IF NOT EXISTS `project_status` (
 
 CREATE TABLE IF NOT EXISTS `project_time` (
   `id` int NOT NULL AUTO_INCREMENT,
+  `context` varchar(20) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL DEFAULT 'project',
+  `context_id` int NOT NULL DEFAULT '0',
   `project_id` int NOT NULL,
   `user_id` int NOT NULL,
   `start_time` datetime NOT NULL,

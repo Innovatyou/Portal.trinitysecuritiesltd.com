@@ -18,17 +18,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
+    // The dashboard already keeps MessagesController's list polling running
+    // for the whole app session (for the app-bar unread badge) - just do an
+    // immediate refresh here for a snappy open, without stopping that timer
+    // on dispose the way a screen-owned poller would.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = Get.find<MessagesController>();
-      c.loadConversations();
-      c.startListPolling();
+      Get.find<MessagesController>().loadConversations();
     });
-  }
-
-  @override
-  void dispose() {
-    Get.find<MessagesController>().stopListPolling();
-    super.dispose();
   }
 
   String _relativeTime(String utcString) {

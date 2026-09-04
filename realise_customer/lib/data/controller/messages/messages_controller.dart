@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:realise/data/model/messages/messages_models.dart';
 import 'package:realise/data/repo/messages/messages_repo.dart';
@@ -19,6 +20,9 @@ class MessagesController extends GetxController {
   Timer? _threadPoller;
   Timer? _listPoller;
 
+  int get totalUnread => conversations.fold(0, (sum, c) => sum + c.unreadCount);
+  bool _hasLoadedOnce = false;
+
   Future<void> loadConversations() async {
     loadingConversations = true;
     update();
@@ -26,13 +30,26 @@ class MessagesController extends GetxController {
     if (r.isSuccess) {
       final decoded = jsonDecode(r.responseJson);
       if (decoded['success'] == true) {
+        final previousUnread = totalUnread;
         conversations = (decoded['data'] as List? ?? [])
             .map((e) => Conversation.fromJson(Map<String, dynamic>.from(e)))
             .toList();
+        // Only alert on a rise after the first load, so opening the app
+        // with an existing unread backlog doesn't itself trigger a sound.
+        if (_hasLoadedOnce && totalUnread > previousUnread) _notifyNewMessage();
+        _hasLoadedOnce = true;
       }
     }
     loadingConversations = false;
     update();
+  }
+
+  /// No dedicated notification-sound asset/package is wired up yet - this
+  /// uses the platform's own UI sound plus a haptic buzz, which needs no new
+  /// dependency and no shipped audio file.
+  void _notifyNewMessage() {
+    SystemSound.play(SystemSoundType.click);
+    HapticFeedback.mediumImpact();
   }
 
   Future<void> loadContacts() async {

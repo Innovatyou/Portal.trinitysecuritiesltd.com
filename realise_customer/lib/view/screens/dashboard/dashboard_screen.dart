@@ -51,13 +51,18 @@ class _HomeScreenState extends State<HomeScreen> {
         Get.put(OperationsController(repo: Get.find()));
 
     Get.put(MessagesRepo(api: Get.find()));
-    Get.put(MessagesController(repo: Get.find()));
+    final messagesController = Get.put(MessagesController(repo: Get.find()));
 
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
       controller.initialData();
       operationsController.load();
+      // Kept running for the app session (not stopped when leaving this
+      // screen) so the unread badge in the app bar stays live everywhere,
+      // not just while the Messages screen itself is open.
+      messagesController.loadConversations();
+      messagesController.startListPolling();
     });
   }
 
@@ -100,6 +105,35 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                 }),
             actions: [
+              GetBuilder<MessagesController>(builder: (messagesController) {
+                final unread = messagesController.totalUnread;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ActionButtonIconWidget(
+                      pressed: () => Get.toNamed(RouteHelper.messagesScreen),
+                      icon: Icons.chat_bubble_outline_rounded,
+                      size: 35,
+                      iconColor: Colors.white,
+                    ),
+                    if (unread > 0)
+                      Positioned(
+                        right: 6,
+                        top: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text(
+                            unread > 9 ? '9+' : '$unread',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              }),
               ActionButtonIconWidget(
                 pressed: () => Get.toNamed(RouteHelper.settingsScreen),
                 icon: Icons.settings,

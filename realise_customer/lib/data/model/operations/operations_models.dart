@@ -20,6 +20,7 @@ class OperationsDetail {
   bool get canDecide=>raw['can_decide']==true;
   bool get canResubmit=>raw['can_resubmit']==true;
   bool get canCancel=>raw['can_cancel']==true;
+  bool get canDelete=>raw['can_delete']==true;
   bool get canRespondInformation=>raw['can_respond_information']==true;
   int? get openConversationId=>int.tryParse('${raw['open_conversation_id']}');
   Map<String,dynamic>? get assignment=>raw['active_assignment'] is Map?Map<String,dynamic>.from(raw['active_assignment']):null;

@@ -151,6 +151,7 @@ class Operations extends Security_Controller
         $data['active_assignment'] = $data['can_decide'] ? $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->get()->getRow() : null;
         $data['active_stage'] = $request->current_stage_instance_id ? $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->current_stage_instance_id)->get()->getRow() : null;
         $data['staff'] = $this->db->table($this->p . 'users')->select("id,CONCAT(first_name,' ',last_name) name")->where(['user_type'=>'staff','status'=>'active','deleted'=>0])->where('id !=',$this->login_user->id)->orderBy('first_name')->get()->getResult();
+        $data['can_delete'] = $this->canDelete($request);
         return $this->template->rander('operations_approval\Views\operations\view', $data);
     }
 
@@ -241,6 +242,21 @@ class Operations extends Security_Controller
         (new Audit_service())->record('request_cancelled', $id, null, $this->login_user, [], ['reason' => trim((string) $this->request->getPost('reason'))]);
         $this->db->transComplete();
         echo json_encode(['success' => true, 'message' => app_lang('operations_request_cancelled'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+    }
+
+    public function delete(int $id)
+    {
+        $request = $this->getRequest($id);
+        if (!$this->canDelete($request)) app_redirect('forbidden');
+        $now = get_current_utc_time();
+        $this->db->transStart();
+        $this->db->table($this->p . 'oa_requests')->where('id', $id)->update(['deleted' => 1, 'updated_at' => $now]);
+        $this->db->table($this->p . 'oa_stage_instances')->where('request_id', $id)->whereIn('status', ['pending', 'active', 'overdue'])->update(['status' => 'cancelled', 'completed_at' => $now]);
+        $stageIds = array_column($this->db->table($this->p . 'oa_stage_instances')->select('id')->where('request_id', $id)->get()->getResultArray(), 'id');
+        if ($stageIds) $this->db->table($this->p . 'oa_assignments')->whereIn('stage_instance_id', $stageIds)->where('status', 'pending')->update(['status' => 'cancelled']);
+        (new Audit_service())->record('request_deleted', $id, null, $this->login_user);
+        $this->db->transComplete();
+        echo json_encode(['success' => true, 'message' => app_lang('operations_request_deleted'), 'redirect_to' => get_uri('operations')]);
     }
 
     public function delegate(int $id)
@@ -437,6 +453,15 @@ class Operations extends Security_Controller
     private function canView(object $request): bool
     {
         return (new Access_service())->canView($request, $this->login_user);
+    }
+
+    // Anyone holding operations_delete_request can remove any request; a
+    // requester can also remove their own once it's no longer in flight
+    // (draft/cancelled/rejected), mirroring canEdit()'s status gate.
+    private function canDelete(object $request): bool
+    {
+        if ($this->permissions->allowed('operations_delete_request', $this->login_user)) return true;
+        return (int) $request->requester_id === (int) $this->login_user->id && in_array($request->status, ['draft', 'cancelled', 'rejected'], true);
     }
 
     private function activeAssignment(object $request): ?object

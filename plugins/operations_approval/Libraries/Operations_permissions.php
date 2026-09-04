@@ -7,7 +7,7 @@ class Operations_permissions
     public const KEYS = [
         'operations_create_request', 'operations_view_own_requests', 'operations_view_department_requests',
         'operations_view_all_requests', 'operations_approve', 'operations_reject', 'operations_return',
-        'operations_comment', 'operations_manage_workflows', 'operations_manage_forms',
+        'operations_comment', 'operations_delete_request', 'operations_manage_workflows', 'operations_manage_forms',
         'operations_manage_settings', 'operations_view_reports', 'operations_export',
         'operations_manage_delegation', 'operations_admin_override'
     ];

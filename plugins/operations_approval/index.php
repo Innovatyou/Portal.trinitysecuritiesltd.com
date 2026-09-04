@@ -106,6 +106,7 @@ $routes->post('operations/request_information/(:num)', '\operations_approval\Con
 $routes->post('operations/respond_information/(:num)', '\operations_approval\Controllers\Operations::respond_information/$1', ['filter' => 'csrf']);
 $routes->post('operations/resubmit/(:num)', '\operations_approval\Controllers\Operations::resubmit/$1', ['filter' => 'csrf']);
 $routes->post('operations/cancel/(:num)', '\operations_approval\Controllers\Operations::cancel/$1', ['filter' => 'csrf']);
+$routes->post('operations/delete/(:num)', '\operations_approval\Controllers\Operations::delete/$1', ['filter' => 'csrf']);
 $routes->post('operations/delegate/(:num)', '\operations_approval\Controllers\Operations::delegate/$1', ['filter' => 'csrf']);
 $routes->post('operations/upload/(:num)', '\operations_approval\Controllers\Operations::upload/$1', ['filter' => 'csrf']);
 $routes->get('operations/download/(:num)', '\operations_approval\Controllers\Operations::download/$1');
@@ -137,6 +138,7 @@ $routes->post('customersapi/operations/requests/(:num)/comment', '\operations_ap
 $routes->post('customersapi/operations/requests/(:num)/information', '\operations_approval\Controllers\Operations_api::information/$1');
 $routes->post('customersapi/operations/requests/(:num)/resubmit', '\operations_approval\Controllers\Operations_api::resubmit/$1');
 $routes->post('customersapi/operations/requests/(:num)/cancel', '\operations_approval\Controllers\Operations_api::cancel/$1');
+$routes->post('customersapi/operations/requests/(:num)/delete', '\operations_approval\Controllers\Operations_api::delete/$1');
 $routes->post('customersapi/operations/requests/(:num)/attachments', '\operations_approval\Controllers\Operations_api::upload/$1');
 $routes->post('customersapi/operations/attachments/(:num)/sign', '\operations_approval\Controllers\Operations_api::signAttachment/$1');
 $routes->get('customersapi/operations/attachments/(:num)/download', '\operations_approval\Controllers\Operations_api::download/$1');

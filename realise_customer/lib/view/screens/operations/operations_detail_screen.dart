@@ -37,6 +37,7 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
       TextField(controller: comment, maxLines: 3, decoration: InputDecoration(labelText: 'Add a comment', suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: () { controller.addComment(comment.text); comment.clear(); }))),
       if (detail.canDecide) _decisions(controller, detail),
       if (detail.canCancel) _cancel(controller),
+      if (detail.canDelete) _delete(controller),
     ]);
   }));
 
@@ -184,6 +185,34 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
           style: FilledButton.styleFrom(backgroundColor: Colors.red),
           onPressed: () { Navigator.pop(context); controller.cancelRequest(reason.text); },
           child: const Text('Cancel request'),
+        ),
+      ],
+    ));
+  }
+
+  Widget _delete(OperationsController controller) => Align(
+    alignment: Alignment.centerRight,
+    child: TextButton.icon(
+      onPressed: () => _confirmDelete(context, controller),
+      icon: const Icon(Icons.delete_outline, color: Colors.red),
+      label: const Text('Delete request', style: TextStyle(color: Colors.red)),
+    ),
+  );
+
+  void _confirmDelete(BuildContext context, OperationsController controller) {
+    showDialog(context: context, builder: (_) => AlertDialog(
+      title: const Text('Delete this request?'),
+      content: const Text('This cannot be undone.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep it')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          onPressed: () async {
+            Navigator.pop(context);
+            final ok = await controller.deleteRequest();
+            if (ok && context.mounted) Navigator.pop(context);
+          },
+          child: const Text('Delete'),
         ),
       ],
     ));

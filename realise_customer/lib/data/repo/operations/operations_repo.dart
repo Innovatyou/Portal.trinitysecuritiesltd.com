@@ -52,6 +52,7 @@ class OperationsRepo {
  Future<ResponseModel> respondInformation(int id,int conversationId,String response)=>api.request('$base/requests/$id/information',Method.postMethod,{'action':'respond','conversation_id':'$conversationId','response':response},passHeader:true);
  Future<ResponseModel> resubmit(int id,String comment,Map<String,String> values)=>api.request('$base/requests/$id/resubmit',Method.postMethod,{'resubmission_comment':comment,...values.map((k,v)=>MapEntry('field_$k',v))},passHeader:true);
  Future<ResponseModel> cancel(int id,String reason)=>api.request('$base/requests/$id/cancel',Method.postMethod,{'reason':reason},passHeader:true);
+ Future<ResponseModel> delete(int id)=>api.request('$base/requests/$id/delete',Method.postMethod,{},passHeader:true);
 
  /// x/y/width/height are fractions of the page (0-1) - the app never has
  /// to agree with the server on page point/mm dimensions, only on "where

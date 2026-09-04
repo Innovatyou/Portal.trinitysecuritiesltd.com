@@ -107,6 +107,7 @@ class Operations_api extends ResourceController
             $request['fields']=$resubmitFields;
         }
         $request['can_cancel']=(int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','submitted','pending_approval','returned','information_requested'],true);
+        $request['can_delete']=(new Operations_permissions())->allowed('operations_delete_request',$user)||((int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','cancelled','rejected'],true));
         $openConversation=$request['status']==='information_requested'?$this->db->table($this->p.'oa_conversations')->where(['request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRowArray():null;
         $request['can_respond_information']=(bool)$openConversation;
         $request['open_conversation_id']=$openConversation['id']??null;
@@ -275,6 +276,22 @@ class Operations_api extends ResourceController
         $this->db->transComplete();
         if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not cancel the request'],500);
         return $this->respond(['success'=>true,'message'=>'Request cancelled']);
+    }
+    public function delete(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+        $canDeleteAny=(new Operations_permissions())->allowed('operations_delete_request',$user);
+        $isOwnDeletable=(int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','cancelled','rejected'],true);
+        if(!$canDeleteAny&&!$isOwnDeletable)return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $now=get_current_utc_time();$this->db->transStart();
+        $this->db->table($this->p.'oa_requests')->where('id',$id)->update(['deleted'=>1,'updated_at'=>$now]);
+        $this->db->table($this->p.'oa_stage_instances')->where('request_id',$id)->whereIn('status',['pending','active','overdue'])->update(['status'=>'cancelled','completed_at'=>$now]);
+        $stageIds=array_column($this->db->table($this->p.'oa_stage_instances')->select('id')->where('request_id',$id)->get()->getResultArray(),'id');
+        if($stageIds)$this->db->table($this->p.'oa_assignments')->whereIn('stage_instance_id',$stageIds)->where('status','pending')->update(['status'=>'cancelled']);
+        (new Audit_service())->record('request_deleted',$id,null,$user);
+        $this->db->transComplete();
+        if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not delete the request'],500);
+        return $this->respond(['success'=>true,'message'=>'Request deleted']);
     }
     public function resubmit(int $id):ResponseInterface
     {

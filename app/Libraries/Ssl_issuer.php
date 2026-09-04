@@ -3,52 +3,138 @@
 namespace App\Libraries;
 
 /**
- * Issues a Let's Encrypt certificate for one tenant domain via certbot's
- * HTTP-01 webroot challenge, and updates tenant_domains.ssl_status.
+ * Issues an SSL certificate for one tenant domain via cPanel's own AutoSSL
+ * (UAPI SSL module), not a standalone certbot binary - certbot needed
+ * exec()/shell_exec() to run, which this server's PHP-FPM pool hard-disables
+ * via php_admin_value (confirmed directly - same restriction Cpanel_mysql
+ * works around). Using cPanel's native AutoSSL is also simply the correct
+ * approach on a cPanel server: certificates it issues install directly into
+ * cPanel's own Apache TLS config, with no separate "reload the web server"
+ * step needed - a standalone certbot cert, by contrast, cPanel wouldn't
+ * know about at all.
  *
- * This assumes:
- *  - certbot is installed on the VPS and reachable on PATH.
- *  - the webroot this app serves from is also what certbot's HTTP-01
- *    challenge is served from (standard `certbot certonly --webroot`).
- *  - the domain's DNS A record already points at this server - certbot
- *    will fail cleanly (and this returns success=false) if it doesn't yet.
- *  - the actual web server (Apache/nginx) is reloaded separately after
- *    issuance to pick up the new certificate; that step is server-specific
- *    and deliberately left to the ops runbook rather than guessed at here.
+ * AutoSSL is account-wide and asynchronous: start_autossl_check() kicks off
+ * a domain-control-validation + issuance pass over EVERY domain on the
+ * cPanel account (not just the one requested) and returns immediately -
+ * the pass itself can take anywhere from seconds to a couple of minutes.
+ * Rather than block the request for that whole time (real risk of hitting
+ * PHP/Apache's own execution timeout), this does one short bounded poll of
+ * is_autossl_check_in_progress() and, if AutoSSL is still running when that
+ * runs out, reports back a "still checking" status instead of guessing at
+ * success or failure - Platform_companies::issue_ssl() leaves ssl_status as
+ * 'pending' in that case rather than overwriting it, so a re-click shortly
+ * after (once AutoSSL has actually finished) gets a real answer.
  *
- * Deliberately synchronous and manually triggered (the "Issue certificate"
- * button in the platform admin company list) rather than auto-polling -
- * see Phase 3 in the SaaS plan for why. Not exercised against a real
- * certbot/DNS setup in this environment (Windows dev box); the "certbot
- * not found" path is what actually gets tested here.
+ * Assumes the domain's DNS A record already points at this server - if it
+ * doesn't, AutoSSL's domain-control-validation fails for that domain and
+ * this returns a 'failed' status with whatever reason get_autossl_problems()
+ * recorded for it.
  */
 class Ssl_issuer {
 
+    private const POLL_INTERVAL_SECONDS = 4;
+    private const MAX_POLLS = 3;
+
+    /** @return array{success: bool, status: 'issued'|'failed'|'checking', message: string} */
     public function issue(string $domain, string $webroot): array {
-        if (!$this->certbot_available()) {
-            return ['success' => false, 'message' => 'certbot is not installed on this server. Install it, then retry.'];
+        $platform = config('Platform');
+        if (!$platform->cpanel_username || !$platform->cpanel_api_token) {
+            return ['success' => false, 'status' => 'failed', 'message' => 'cPanel API is not configured (platform.cpanel_username / platform.cpanel_api_token).'];
         }
 
-        $admin_email = get_setting('smtp_email') ?: get_setting('email') ?: 'admin@' . $domain;
+        $start = $this->call('start_autossl_check', []);
+        if (!$start['success']) {
+            return ['success' => false, 'status' => 'failed', 'message' => "Could not start AutoSSL check: {$start['message']}"];
+        }
 
-        $cmd = sprintf(
-            'certbot certonly --non-interactive --agree-tos -m %s --webroot -w %s -d %s 2>&1',
-            escapeshellarg($admin_email),
-            escapeshellarg(rtrim($webroot, '/')),
-            escapeshellarg($domain)
-        );
+        $still_running = true;
+        for ($i = 0; $i < self::MAX_POLLS; $i++) {
+            sleep(self::POLL_INTERVAL_SECONDS);
 
-        exec($cmd, $output, $exit_code);
-        $output_text = implode("\n", $output);
+            $progress = $this->call('is_autossl_check_in_progress', []);
+            if (!$progress['success']) {
+                return ['success' => false, 'status' => 'failed', 'message' => "Could not check AutoSSL status: {$progress['message']}"];
+            }
+            if (!$progress['data']) {
+                $still_running = false;
+                break;
+            }
+        }
+
+        if ($still_running) {
+            return [
+                'success' => false,
+                'status' => 'checking',
+                'message' => 'AutoSSL check started - it can take a minute or two across all domains. Click Issue certificate again shortly to check the result.',
+            ];
+        }
+
+        $installed = $this->call('installed_host', ['domain' => $domain]);
+        if ($installed['success'] && !empty($installed['data']['certificate'])) {
+            return ['success' => true, 'status' => 'issued', 'message' => 'Certificate issued.'];
+        }
+
+        $problems = $this->call('get_autossl_problems', []);
+        $reason = null;
+        if ($problems['success'] && is_array($problems['data'])) {
+            foreach ($problems['data'] as $problem) {
+                if (($problem['domain'] ?? null) === $domain) {
+                    $reason = $problem['reason'] ?? null;
+                    break;
+                }
+            }
+        }
 
         return [
-            'success' => $exit_code === 0,
-            'message' => $exit_code === 0 ? 'Certificate issued.' : "certbot exited with code {$exit_code}: {$output_text}",
+            'success' => false,
+            'status' => 'failed',
+            'message' => $reason
+                ? "AutoSSL could not issue a certificate for {$domain}: {$reason}"
+                : "AutoSSL ran but {$domain} still has no certificate - check that its DNS A record points at this server.",
         ];
     }
 
-    private function certbot_available(): bool {
-        exec('certbot --version 2>&1', $output, $exit_code);
-        return $exit_code === 0;
+    /** @return array{success: bool, message?: string, data?: mixed} */
+    private function call(string $function, array $params): array {
+        $platform = config('Platform');
+
+        if (!function_exists('curl_init')) {
+            return ['success' => false, 'message' => 'PHP curl extension is not available.'];
+        }
+
+        $url = "https://{$platform->cpanel_hostname}:2083/execute/SSL/{$function}";
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => http_build_query($params),
+            CURLOPT_HTTPHEADER => ["Authorization: cpanel {$platform->cpanel_username}:{$platform->cpanel_api_token}"],
+            CURLOPT_RETURNTRANSFER => true,
+            // Loopback call to cPanel's own local service on this same
+            // server, not a network hop - see Cpanel_mysql's docblock for
+            // the same reasoning.
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_TIMEOUT => 30,
+        ]);
+        $output = curl_exec($ch);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
+
+        if ($output === false) {
+            return ['success' => false, 'message' => "uapi SSL::{$function} request failed: {$curl_error}"];
+        }
+
+        $decoded = json_decode((string) $output, true);
+        $status = $decoded['status'] ?? null;
+
+        if ($status !== 1) {
+            $errors = $decoded['errors'] ?? null;
+            $message = is_array($errors) ? implode('; ', $errors) : ('uapi SSL::' . $function . ' failed: ' . trim((string) $output));
+
+            return ['success' => false, 'message' => $message];
+        }
+
+        return ['success' => true, 'data' => $decoded['data'] ?? null];
     }
 }

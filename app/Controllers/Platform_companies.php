@@ -45,10 +45,17 @@ class Platform_companies extends Platform_base {
 
         $result = (new Ssl_issuer())->issue($domain_row->domain, FCPATH);
 
-        $this->landlord->table('tenant_domains')->where('id', $domain_id)->update([
-            'ssl_status' => $result['success'] ? 'issued' : 'failed',
-            'verified_at' => $result['success'] ? date('Y-m-d H:i:s') : null,
-        ]);
+        // AutoSSL runs asynchronously across every domain on the account -
+        // 'checking' means it hadn't finished within Ssl_issuer's short
+        // poll window, not a real answer yet, so leave ssl_status as
+        // 'pending' rather than marking it 'failed'. Re-clicking "Issue
+        // certificate" shortly after gets a definitive result.
+        if ($result['status'] !== 'checking') {
+            $this->landlord->table('tenant_domains')->where('id', $domain_id)->update([
+                'ssl_status' => $result['success'] ? 'issued' : 'failed',
+                'verified_at' => $result['success'] ? date('Y-m-d H:i:s') : null,
+            ]);
+        }
 
         session()->setFlashdata($result['success'] ? 'success' : 'error', $result['message']);
         return redirect()->to(site_url('platform_companies'));

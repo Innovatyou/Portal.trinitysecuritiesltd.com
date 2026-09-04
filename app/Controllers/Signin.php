@@ -16,7 +16,7 @@ class Signin extends App_Controller {
 
     function index() {
         if ($this->Users_model->login_user_id()) {
-            app_redirect('dashboard/view');
+            app_redirect($this->_default_landing_page());
         } else {
 
             $view_data["redirect"] = "";
@@ -94,11 +94,23 @@ class Signin extends App_Controller {
             if ($allowed_host === $redirect_host) {
                 return redirect()->to($redirect);
             } else {
-                app_redirect('dashboard/view');
+                app_redirect($this->_default_landing_page());
             }
         } else {
-            app_redirect('dashboard/view');
+            app_redirect($this->_default_landing_page());
         }
+    }
+
+    //staff land on the Operations dashboard by default; clients keep the regular dashboard
+    //since the Operations screens are restricted to team members (access_only_team_members)
+    private function _default_landing_page() {
+        $login_user_id = $this->Users_model->login_user_id();
+        $user = $login_user_id ? $this->Users_model->get_one($login_user_id) : null;
+        if ($user && $user->user_type === "staff") {
+            return "operations";
+        }
+
+        return "dashboard/view";
     }
 
     function sign_out() {

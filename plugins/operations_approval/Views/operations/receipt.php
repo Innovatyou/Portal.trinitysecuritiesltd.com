@@ -15,4 +15,4 @@
 <?php echo anchor(get_uri('operations/view/'.$request->id),'<i data-feather="arrow-left" class="icon-16"></i> Back to request',['class'=>'btn btn-default']); ?>
 </div><p class="receipt-note">This receipt was generated from an approved WorkFlow request and recorded in its audit history.</p>
 </article></div>
-<script>$(function(){$('#receipt-email-form').appForm({isModal:false});});</script>
+<script>$(function(){$('#receipt-email-form').appForm({isModal:false, onSuccess: oaFormFeedback});});</script>

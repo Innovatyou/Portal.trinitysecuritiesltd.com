@@ -10,4 +10,4 @@ else echo form_input(['id' => 'field-' . $field->field_key, 'name' => 'field_' .
 <?php if (!empty($config['help'])) { ?><small class="text-muted"><?php echo esc($config['help']); ?></small><?php } ?></div><?php } ?>
 <button type="submit" name="save_draft" value="1" class="btn btn-default mr10"><?php echo app_lang('operations_save_as_draft'); ?></button><button type="submit" name="submit_request" value="1" class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button>
 <?php echo form_close(); ?>
-<script>$(document).ready(function(){ $('#operations-create-form').appForm({isModal:false}); });</script>
+<script>$(document).ready(function(){ $('#operations-create-form').appForm({isModal:false, onSuccess: oaFormFeedback}); });</script>

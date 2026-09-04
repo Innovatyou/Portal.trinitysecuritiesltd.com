@@ -152,7 +152,7 @@ if ($firstGroupId) {
 var oaExistingStages = <?php $decodedDefinition = json_decode($definition, true) ?: ['stages' => []]; echo json_encode($decodedDefinition['stages'] ?? [], JSON_UNESCAPED_SLASHES); ?>;
 
 $(document).ready(function () {
-    $('#operations-workflow-form').appForm({isModal: false});
+    $('#operations-workflow-form').appForm({isModal: false, onSuccess: oaFormFeedback});
 
     function currentFieldsFromTextarea() {
         try {

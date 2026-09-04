@@ -277,7 +277,7 @@ class Operations_api extends ResourceController
         if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not cancel the request'],500);
         return $this->respond(['success'=>true,'message'=>'Request cancelled']);
     }
-    public function delete(int $id):ResponseInterface
+    public function deleteRequest(int $id):ResponseInterface
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request)return $this->respond(['success'=>false,'message'=>'Not found'],404);
         $canDeleteAny=(new Operations_permissions())->allowed('operations_delete_request',$user);

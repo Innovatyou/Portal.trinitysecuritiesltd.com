@@ -12,6 +12,18 @@ import 'package:realise/core/utils/url_container.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/di_service/di_services.dart' as services;
 
+/// Used by CustomSnackBar instead of Get.rawSnackbar(), which depends on
+/// GetX's own Overlay resolution - confirmed broken in this app: it throws
+/// "No Overlay widget found" / a null-check crash on Overlay.of every time,
+/// not just as a rare race. Worse, a snackbar job that fails to initialize
+/// this way leaves GetX's SnackbarController in a half-initialized state,
+/// so a LATER Get.back() call - which internally calls
+/// closeCurrentSnackbar() unconditionally - throws too and never completes,
+/// silently blocking navigation after every success/error toast. Flutter's
+/// own ScaffoldMessenger doesn't go anywhere near that code path.
+final GlobalKey<ScaffoldMessengerState> rootScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final sharedPreferences = await SharedPreferences.getInstance();
@@ -47,6 +59,7 @@ class MyApp extends StatelessWidget {
           transitionDuration: const Duration(milliseconds: 200),
           initialRoute: RouteHelper.splashScreen,
           navigatorKey: Get.key,
+          scaffoldMessengerKey: rootScaffoldMessengerKey,
           theme: theme.darkTheme ? dark : light,
           getPages: RouteHelper().routes,
           locale: localizeController.locale,

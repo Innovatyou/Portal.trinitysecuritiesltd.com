@@ -68,6 +68,7 @@ $lang['operations_prefix'] = 'Request prefix';
 $lang['operations_publish'] = 'Publish';
 $lang['operations_definition_json'] = 'Workflow definition';
 $lang['operations_definition_help'] = 'Define fields and ordered stages as JSON. Publishing creates an immutable workflow version.';
+$lang['operations_workflow_templates'] = 'Start from a template';
 $lang['operations_invalid_definition_json'] = 'The workflow definition is not valid JSON.';
 $lang['operations_invalid_field_key'] = 'Field keys must start with a letter and contain only lowercase letters, numbers, and underscores.';
 $lang['operations_duplicate_field_key'] = 'Field keys must be unique.';

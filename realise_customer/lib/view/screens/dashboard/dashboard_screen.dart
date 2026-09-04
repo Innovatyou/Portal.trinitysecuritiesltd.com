@@ -125,8 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 backgroundColor: ColorResources.blueGreyColor,
                                 radius: 31,
                                 child: CircleImageWidget(
-                                  imagePath:
-                                      '${UrlContainer.profileImgUrl}${controller.dashboardModel.data!.clientData?.avatar ?? ''}',
+                                  imagePath: '${UrlContainer.profileImgUrl}${(controller.dashboardModel.data?.clientData?.avatar?.isNotEmpty ?? false) ? controller.dashboardModel.data!.clientData!.avatar : controller.dashboardRepo.apiClient.sharedPreferences.getString(SharedPreferenceHelper.userAvatarKey) ?? ''}',
                                   isAsset: false,
                                   isProfile: true,
                                   width: 60,

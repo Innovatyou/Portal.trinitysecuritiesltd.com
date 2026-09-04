@@ -1,8 +1,10 @@
+import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/route/route.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:realise/core/utils/url_container.dart';
 import 'package:realise/data/controller/dashboard/dashboard_controller.dart';
 import 'package:realise/data/model/dashboard/dashboard_model.dart';
+import 'package:realise/data/services/api_service.dart';
 import 'package:realise/view/components/circle_image_button.dart';
 import 'package:realise/view/components/dialog/warning_dialog.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +19,21 @@ class HomeDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // clientData is blank for a staff login (customersapi/dashboard only
+    // has client-account data) - fall back to what login persisted, same
+    // as HomeScreen's own header and ProfileScreen.
+    final prefs = Get.find<ApiClient>().sharedPreferences;
+    final clientAvatar = dashboardModel.data?.clientData?.avatar ?? '';
+    final avatar = clientAvatar.isNotEmpty
+        ? clientAvatar
+        : prefs.getString(SharedPreferenceHelper.userAvatarKey) ?? '';
+    var name =
+        '${dashboardModel.data?.clientData?.firstName ?? ''} ${dashboardModel.data?.clientData?.lastName ?? ''}'
+            .trim();
+    if (name.isEmpty) {
+      name = prefs.getString(SharedPreferenceHelper.userNameKey) ?? '';
+    }
+
     return SafeArea(
       child: Drawer(
         child: Column(
@@ -29,8 +46,7 @@ class HomeDrawer extends StatelessWidget {
                     backgroundColor: ColorResources.blueGreyColor,
                     radius: 42,
                     child: CircleImageWidget(
-                      imagePath:
-                          '${UrlContainer.profileImgUrl}${dashboardModel.data!.clientData?.avatar ?? ''}',
+                      imagePath: '${UrlContainer.profileImgUrl}$avatar',
                       isAsset: false,
                       isProfile: true,
                       width: 80,
@@ -43,7 +59,7 @@ class HomeDrawer extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${dashboardModel.data?.clientData?.firstName ?? ''} ${dashboardModel.data?.clientData?.lastName ?? ''}',
+                        name,
                         style: semiBoldLarge.copyWith(
                           color: Theme.of(context).textTheme.bodyLarge!.color,
                         ),

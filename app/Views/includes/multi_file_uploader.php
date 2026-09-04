@@ -164,12 +164,18 @@ if (!isset($validation_url)) {
             }
         });
 
-        document.querySelector(".start-upload").onclick = function() {
-            projectFilesDropzone.enqueueFiles(projectFilesDropzone.getFilesWithStatus(Dropzone.ADDED));
-        };
-        document.querySelector(".cancel-upload").onclick = function() {
-            projectFilesDropzone.removeAllFiles(true);
-        };
+        var startUploadButton = document.querySelector(".start-upload");
+        if (startUploadButton) {
+            startUploadButton.onclick = function() {
+                projectFilesDropzone.enqueueFiles(projectFilesDropzone.getFilesWithStatus(Dropzone.ADDED));
+            };
+        }
+        var cancelUploadButton = document.querySelector(".cancel-upload");
+        if (cancelUploadButton) {
+            cancelUploadButton.onclick = function() {
+                projectFilesDropzone.removeAllFiles(true);
+            };
+        }
         initScrollbar("#file-upload-dropzone-scrollbar", {
             setHeight: 280
         });

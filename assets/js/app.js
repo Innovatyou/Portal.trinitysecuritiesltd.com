@@ -1,3 +1,15 @@
+// Dropzone auto-attaches to every element with class "dropzone" on
+// DOMContentLoaded unless this is set first. Harmless for the modal-loaded
+// uploaders (their markup only exists after this has long since fired), but
+// any dropzone rendered as part of the initial page HTML (e.g. a plain,
+// non-modal page like operations/view) gets auto-initialized with no options
+// - then this file's own explicit `new Dropzone(...)` call on the same
+// element throws "Dropzone already attached", aborting the rest of that
+// script block (including the code that wires up the real upload URL).
+if (typeof Dropzone !== "undefined") {
+    Dropzone.autoDiscover = false;
+}
+
 $(document).ready(function () {
     $.ajaxSetup({ cache: false });
 

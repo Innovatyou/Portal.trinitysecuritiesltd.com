@@ -24060,6 +24060,10 @@ $(window).on('load', function () {
     });
 });
 
+if (typeof Dropzone !== "undefined") {
+    Dropzone.autoDiscover = false;
+}
+
 $(document).ready(function () {
     $.ajaxSetup({ cache: false });
 

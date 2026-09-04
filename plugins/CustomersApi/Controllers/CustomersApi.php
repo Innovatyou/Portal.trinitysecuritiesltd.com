@@ -18,6 +18,7 @@ class CustomersApi extends Security_Controller {
     public function saveSettings()
     {
         $this->Settings_model->save_setting("customersapi_secret_key", $this->request->getPost('jwt_secret_key'));
+        $this->Settings_model->save_setting("privacy_policy_content", $this->request->getPost('privacy_policy_content'));
 
         echo json_encode(array("success" => true, 'message' => app_lang('settings_updated')));
     }

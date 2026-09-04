@@ -42,14 +42,21 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
             width: MediaQuery.of(context).size.width,
             child: controller.isLoading
                 ? const CustomLoader()
-                : SingleChildScrollView(
-                    child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: HtmlWidget('',
-                            textStyle: regularDefault,
-                            onLoadingBuilder:
-                                (context, element, loadingProgress) =>
-                                    const Center(child: CustomLoader())))),
+                : controller.content.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20),
+                          child: Text('No privacy policy has been added yet.'),
+                        ),
+                      )
+                    : SingleChildScrollView(
+                        child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: HtmlWidget(controller.content,
+                                textStyle: regularDefault,
+                                onLoadingBuilder:
+                                    (context, element, loadingProgress) =>
+                                        const Center(child: CustomLoader())))),
           ),
         ));
   }

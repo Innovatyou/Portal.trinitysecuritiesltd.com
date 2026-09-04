@@ -285,6 +285,19 @@ class RestApiController extends ResourceController
         return $this->respond(['success' => false, 'message' => app_lang("account_disabled")]);
     }
     
+    /**
+     * Content is admin-edited (Settings > Plugins > CustomersApi) rich text,
+     * not a real legal document out of the box - deliberately unauthenticated
+     * since a privacy policy is meant to be publicly readable, and applies
+     * the same regardless of whether the viewer is a client or staff login.
+     */
+    public function privacyPolicy(): ResponseInterface
+    {
+        return $this->respond(['success' => true, 'message' => app_lang('data_retrieved_successfully'), 'data' => [
+            'content' => get_setting('privacy_policy_content') ?: '',
+        ]]);
+    }
+
     public function forgetPassword()
     {
         $this->validate(array('email' => 'required|valid_email'));

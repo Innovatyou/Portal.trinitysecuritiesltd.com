@@ -24,6 +24,9 @@ $routes->group('customersapi', $customers_api_namespace, function ($routes) {
     // Profile
     $routes->get('profile', 'RestApiController::profile'); // Get Customer Data
 
+    // Privacy Policy (public content, no auth required)
+    $routes->get('privacy-policy', 'RestApiController::privacyPolicy');
+
     // Projects
     $routes->get('projects', 'ProjectsController::projects'); // Get Projects List
     $routes->get('projects/(:num)', 'ProjectsController::showProject/$1'); // Get Project by Id

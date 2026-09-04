@@ -34,6 +34,21 @@
                         </div>
                     </div>
 
+                    <div class="form-group">
+                        <div class="row">
+                            <label for="privacy_policy_content" class=" col-md-3">Privacy Policy (shown in the mobile app): </label>
+                            <div class=" col-md-9">
+                                <?php
+                                echo form_textarea(array(
+                                    "id" => "privacy_policy_content",
+                                    "name" => "privacy_policy_content",
+                                    "value" => process_images_from_content(get_setting("privacy_policy_content"), false),
+                                ));
+                                ?>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
 
                 <div class="card-footer">
@@ -55,5 +70,7 @@
                 appAlert.success(result.message, {duration: 10000});
             }
         });
+
+        initWYSIWYGEditor("#privacy_policy_content");
     });
 </script>

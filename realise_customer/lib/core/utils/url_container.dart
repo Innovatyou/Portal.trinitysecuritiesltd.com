@@ -90,5 +90,5 @@ class UrlContainer {
   static const String paymentsUrl = 'payments';
   static const String ticketsUrl = 'tickets';
   static const String profileUrl = 'profile';
-  static const String privacyPolicyUrl = 'knowledge_base/privacy-policy';
+  static const String privacyPolicyUrl = 'privacy-policy';
 }

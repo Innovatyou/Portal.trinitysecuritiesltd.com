@@ -10,17 +10,20 @@ class WillPopWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ignore: deprecated_member_use
-    return WillPopScope(
-        onWillPop: () async {
-          if (nextRoute.isEmpty) {
-            showExitDialog(context);
-            return Future.value(false);
-          } else {
-            Get.offAndToNamed(nextRoute);
-            return Future.value(false);
-          }
-        },
-        child: child);
+    // WillPopScope is deprecated and unreliable on current Flutter with
+    // Android's predictive-back gesture and GetX's own navigation stack -
+    // PopScope is the current, correctly-integrated replacement.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (nextRoute.isEmpty) {
+          showExitDialog(context);
+        } else {
+          Get.offAndToNamed(nextRoute);
+        }
+      },
+      child: child,
+    );
   }
 }

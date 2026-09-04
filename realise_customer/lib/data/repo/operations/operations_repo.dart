@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:realise/core/utils/method.dart';
@@ -51,4 +52,35 @@ class OperationsRepo {
  Future<ResponseModel> respondInformation(int id,int conversationId,String response)=>api.request('$base/requests/$id/information',Method.postMethod,{'action':'respond','conversation_id':'$conversationId','response':response},passHeader:true);
  Future<ResponseModel> resubmit(int id,String comment,Map<String,String> values)=>api.request('$base/requests/$id/resubmit',Method.postMethod,{'resubmission_comment':comment,...values.map((k,v)=>MapEntry('field_$k',v))},passHeader:true);
  Future<ResponseModel> cancel(int id,String reason)=>api.request('$base/requests/$id/cancel',Method.postMethod,{'reason':reason},passHeader:true);
+
+ /// x/y/width/height are fractions of the page (0-1) - the app never has
+ /// to agree with the server on page point/mm dimensions, only on "where
+ /// on the page, proportionally" the signature goes.
+ Future<ResponseModel> signAttachment(int attachmentId, Uint8List signaturePng, {required int page, required double x, required double y, required double width, required double height}) async {
+   api.initToken();
+   final request = http.MultipartRequest(
+       'POST', Uri.parse('${UrlContainer.baseUrl}operations/attachments/$attachmentId/sign'))
+     ..headers.addAll({
+       'Authorization': '${api.tokenType} ${api.token}',
+       'X-Authorization': api.token,
+     })
+     ..fields.addAll({
+       'page': '$page',
+       'x': '$x',
+       'y': '$y',
+       'width': '$width',
+       'height': '$height',
+     })
+     ..files.add(http.MultipartFile.fromBytes('signature', signaturePng, filename: 'signature.png'));
+   try {
+     final streamed = await request.send().timeout(const Duration(seconds: 60));
+     final response = await http.Response.fromStream(streamed);
+     if (response.statusCode == 200) {
+       return ResponseModel(true, 'Success', 200, response.body);
+     }
+     return ResponseModel(false, 'Signing failed', response.statusCode, response.body);
+   } catch (e) {
+     return ResponseModel(false, 'Signing failed: $e', 499, '');
+   }
+ }
 }

@@ -137,4 +137,5 @@ $routes->post('customersapi/operations/requests/(:num)/information', '\operation
 $routes->post('customersapi/operations/requests/(:num)/resubmit', '\operations_approval\Controllers\Operations_api::resubmit/$1');
 $routes->post('customersapi/operations/requests/(:num)/cancel', '\operations_approval\Controllers\Operations_api::cancel/$1');
 $routes->post('customersapi/operations/requests/(:num)/attachments', '\operations_approval\Controllers\Operations_api::upload/$1');
+$routes->post('customersapi/operations/attachments/(:num)/sign', '\operations_approval\Controllers\Operations_api::signAttachment/$1');
 $routes->get('customersapi/operations/attachments/(:num)/download', '\operations_approval\Controllers\Operations_api::download/$1');

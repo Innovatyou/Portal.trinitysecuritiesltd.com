@@ -8,6 +8,7 @@ import 'package:realise/core/utils/color_resources.dart';
 import 'package:realise/data/controller/operations/operations_controller.dart';
 import 'package:realise/data/model/operations/operations_models.dart';
 import 'package:realise/view/components/operations/depth_card.dart';
+import 'package:realise/view/screens/operations/sign_document_screen.dart';
 
 class OperationsDetailScreen extends StatefulWidget {
   final int id;
@@ -30,7 +31,7 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
       if (detail.canRespondInformation) _informationRequest(controller, detail),
       if (detail.canResubmit) _resubmit(controller, detail),
       TextField(controller: comment, maxLines: 3, decoration: InputDecoration(labelText: 'Add a comment', suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: () { controller.addComment(comment.text); comment.clear(); }))),
-      if (detail.canDecide) _decisions(controller),
+      if (detail.canDecide) _decisions(controller, detail),
       if (detail.canCancel) _cancel(controller),
     ]);
   }));
@@ -119,7 +120,45 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
     ]));
   }
 
-  Widget _decisions(OperationsController controller) { final note = TextEditingController(); return DepthCard(accent: ColorResources.primaryColor, child: Column(children: [TextField(controller: note, decoration: const InputDecoration(labelText: 'Decision note')), const SizedBox(height: 12), Wrap(spacing: 8, children: [FilledButton(onPressed: () => controller.decide('approve', note.text), child: const Text('Approve')), OutlinedButton(onPressed: () => controller.decide('return', note.text), child: const Text('Return')), OutlinedButton(onPressed: () => controller.decide('reject', note.text), child: const Text('Reject')), TextButton.icon(onPressed: () => _askQuestion(context, controller), icon: const Icon(Icons.help_outline), label: const Text('Ask a question'))]) ])); }
+  Widget _decisions(OperationsController controller, OperationsDetail detail) { final note = TextEditingController(); final pdfAttachments = detail.attachments.where((a) => '${a['original_name']}'.toLowerCase().endsWith('.pdf')).toList(); return DepthCard(accent: ColorResources.primaryColor, child: Column(children: [TextField(controller: note, decoration: const InputDecoration(labelText: 'Decision note')), const SizedBox(height: 12), Wrap(spacing: 8, children: [FilledButton(onPressed: () => controller.decide('approve', note.text), child: const Text('Approve')), if (pdfAttachments.isNotEmpty) OutlinedButton.icon(onPressed: () => _signAndApprove(context, controller, pdfAttachments, note), icon: const Icon(Icons.draw_outlined), label: const Text('Sign & Approve')), OutlinedButton(onPressed: () => controller.decide('return', note.text), child: const Text('Return')), OutlinedButton(onPressed: () => controller.decide('reject', note.text), child: const Text('Reject')), TextButton.icon(onPressed: () => _askQuestion(context, controller), icon: const Icon(Icons.help_outline), label: const Text('Ask a question'))]) ])); }
+
+  Future<void> _signAndApprove(BuildContext context, OperationsController controller, List<Map<String, dynamic>> pdfAttachments, TextEditingController note) async {
+    // Most recently uploaded PDF attachment by default - matches the
+    // common case of one document requiring approval per request. With
+    // several PDFs attached, let the approver pick which one to sign.
+    var target = pdfAttachments.last;
+    if (pdfAttachments.length > 1) {
+      final picked = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: pdfAttachments
+                .map((a) => ListTile(
+                      leading: const Icon(Icons.picture_as_pdf_outlined),
+                      title: Text('${a['original_name']}'),
+                      onTap: () => Navigator.of(context).pop(a),
+                    ))
+                .toList(),
+          ),
+        ),
+      );
+      if (picked == null) return;
+      target = picked;
+    }
+
+    if (!context.mounted) return;
+    final signed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => SignDocumentScreen(
+        attachmentId: int.tryParse('${target['id']}') ?? 0,
+        attachmentName: '${target['original_name']}',
+      ),
+    ));
+
+    if (signed == true) {
+      controller.decide('approve', note.text);
+    }
+  }
 
   Widget _cancel(OperationsController controller) => Align(
     alignment: Alignment.centerRight,

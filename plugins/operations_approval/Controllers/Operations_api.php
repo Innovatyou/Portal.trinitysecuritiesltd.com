@@ -171,6 +171,78 @@ class Operations_api extends ResourceController
         if(!$this->db->transStatus())return $this->respond(['success'=>false,'message'=>'Could not save the response'],500);
         return $this->respond(['success'=>true,'message'=>'Response sent']);
     }
+    /**
+     * Stamps a signature image onto one page of an already-uploaded PDF
+     * attachment, producing a new "-signed" PDF registered as its own
+     * attachment (context 'signature') - the original attachment is never
+     * modified, so the unsigned version stays in the timeline alongside it.
+     *
+     * x/y/width/height are fractions of the page (0-1), not points/mm - the
+     * app works purely off however it rendered the page for the approver to
+     * position the signature, and this maps that straight onto the page's
+     * actual size regardless of the page's real dimensions/orientation.
+     */
+    public function signAttachment(int $attachmentId):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+
+        $attachment=(new Attachment_service())->get($attachmentId);
+        if(!$attachment)return $this->respond(['success'=>false,'message'=>'Not found'],404);
+
+        $request=$this->requestRow((int)$attachment->request_id);
+        if(!$request||(new Access_service())->canView((object)$request,$user)===false)return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+
+        if(strtolower(pathinfo($attachment->original_name,PATHINFO_EXTENSION))!=='pdf')return $this->respond(['success'=>false,'message'=>'This attachment is not a PDF'],422);
+        $sourcePath=rtrim($attachment->storage_path,'/\\').DIRECTORY_SEPARATOR.$attachment->storage_name;
+        if(!is_file($sourcePath))return $this->respond(['success'=>false,'message'=>'Not found'],404);
+
+        $signatureFile=$this->request->getFile('signature');
+        if(!$signatureFile||!$signatureFile->isValid())return $this->respond(['success'=>false,'message'=>'No signature image was received'],422);
+        if(!str_starts_with((string)$signatureFile->getMimeType(),'image/'))return $this->respond(['success'=>false,'message'=>'Signature must be an image'],422);
+
+        $page=max(1,(int)$this->request->getPost('page'));
+        $x=(float)$this->request->getPost('x');$y=(float)$this->request->getPost('y');
+        $w=(float)$this->request->getPost('width');$h=(float)$this->request->getPost('height');
+        if($w<=0||$h<=0||$x<0||$y<0)return $this->respond(['success'=>false,'message'=>'Invalid signature position'],422);
+
+        require_once PLUGINPATH.'operations_approval/Vendor/autoload.php';
+
+        try{
+            $pdf=new \setasign\Fpdi\Tcpdf\Fpdi();
+            $pdf->setPrintHeader(false);$pdf->setPrintFooter(false);
+            $pageCount=$pdf->setSourceFile($sourcePath);
+            if($page>$pageCount)return $this->respond(['success'=>false,'message'=>"This document only has {$pageCount} page(s)"],422);
+
+            for($pageNo=1;$pageNo<=$pageCount;$pageNo++){
+                $tplId=$pdf->importPage($pageNo);
+                $size=$pdf->getTemplateSize($tplId);
+                $pdf->AddPage($size['orientation'],[$size['width'],$size['height']]);
+                $pdf->useTemplate($tplId);
+                if($pageNo===$page){
+                    $pdf->Image($signatureFile->getTempName(),$x*$size['width'],$y*$size['height'],$w*$size['width'],$h*$size['height'],'PNG','','',false,300,'',false,false,0,false,false,false);
+                }
+            }
+
+            helper('app_files');
+            $tempDir=rtrim(get_setting('temp_file_path'),'/\\');
+            if(!is_dir($tempDir)&&!mkdir($tempDir,0755,true))return $this->respond(['success'=>false,'message'=>'Could not prepare storage'],500);
+            $signedFileName=preg_replace('/[^A-Za-z0-9_\-]/','-',pathinfo($attachment->original_name,PATHINFO_FILENAME)).'-signed-'.bin2hex(random_bytes(4)).'.pdf';
+            $pdf->Output($tempDir.'/'.$signedFileName,'F');
+        }catch(\Throwable $e){
+            log_message('error','Operations signAttachment failed: {message}',['message'=>$e->getMessage()]);
+            return $this->respond(['success'=>false,'message'=>'Could not sign this document - it may be encrypted or in an unsupported format.'],500);
+        }
+
+        try{
+            $signedAttachmentId=(new Attachment_service())->store((int)$attachment->request_id,(int)$user->id,$signedFileName,$request['current_stage_instance_id']?(int)$request['current_stage_instance_id']:null,'signature');
+        }catch(\Throwable $e){
+            return $this->respond(['success'=>false,'message'=>$e->getMessage()],422);
+        }
+
+        (new Audit_service())->record('attachment_signed',(int)$attachment->request_id,$request['current_stage_instance_id']?(int)$request['current_stage_instance_id']:null,$user,[],['original_attachment_id'=>$attachmentId,'signed_attachment_id'=>$signedAttachmentId]);
+
+        return $this->respond(['success'=>true,'message'=>'Document signed','data'=>['attachment_id'=>$signedAttachmentId]]);
+    }
     public function upload(int $id):ResponseInterface
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();$request=$this->requestRow($id);if(!$request||!(new Access_service())->canView((object)$request,$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:realise/data/model/operations/operations_models.dart';
@@ -23,4 +24,25 @@ class OperationsController extends GetxController {
  Future<void> resubmit(String comment,Map<String,String> values)async{final d=detailData;if(d==null||comment.trim().isEmpty)return;submitting=true;update();final r=await repo.resubmit(d.request.id,comment.trim(),values);submitting=false;if(r.isSuccess&&jsonDecode(r.responseJson)['success']==true){CustomSnackBar.success(successList:['Request resubmitted']);await loadDetail(d.request.id);await loadMine();}else CustomSnackBar.error(errorList:[jsonDecode(r.responseJson)['message']?.toString()??r.message]);update();}
  Future<void> cancelRequest(String reason)async{final d=detailData;if(d==null||reason.trim().isEmpty)return;submitting=true;update();final r=await repo.cancel(d.request.id,reason.trim());submitting=false;if(r.isSuccess&&jsonDecode(r.responseJson)['success']==true){CustomSnackBar.success(successList:['Request cancelled']);await loadDetail(d.request.id);await loadMine();}else CustomSnackBar.error(errorList:[jsonDecode(r.responseJson)['message']?.toString()??r.message]);update();}
  Future<void> uploadAttachment(File file)async{final d=detailData;if(d==null)return;submitting=true;update();final r=await repo.uploadAttachment(d.request.id,file);submitting=false;if(r.isSuccess&&jsonDecode(r.responseJson)['success']==true){CustomSnackBar.success(successList:['Attachment uploaded']);await loadDetail(d.request.id);}else CustomSnackBar.error(errorList:[jsonDecode(r.responseJson)['message']?.toString()??r.message]);update();}
+
+ /// Stamps [signaturePng] onto [attachmentId] (must already be one of the
+ /// current request's own PDF attachments) and refreshes the detail so the
+ /// new signed copy shows up in Attachments. Returns whether it succeeded -
+ /// callers use that to decide whether to go on and record the decision.
+ Future<bool> signAttachment(int attachmentId, Uint8List signaturePng, {required int page, required double x, required double y, required double width, required double height}) async {
+   final d = detailData;
+   if (d == null) return false;
+   submitting = true;
+   update();
+   final r = await repo.signAttachment(attachmentId, signaturePng, page: page, x: x, y: y, width: width, height: height);
+   submitting = false;
+   final ok = r.isSuccess && jsonDecode(r.responseJson)['success'] == true;
+   if (ok) {
+     await loadDetail(d.request.id);
+   } else {
+     CustomSnackBar.error(errorList: [jsonDecode(r.responseJson)['message']?.toString() ?? r.message]);
+   }
+   update();
+   return ok;
+ }
 }

@@ -17,7 +17,11 @@ class OperationsDetailScreen extends StatefulWidget {
 }
 class _OperationsDetailState extends State<OperationsDetailScreen> {
   final comment = TextEditingController();
-  @override void initState() { super.initState(); Get.find<OperationsController>().loadDetail(widget.id); }
+  // loadDetail() calls update() (loading=true) before its first await -
+  // calling it synchronously from initState, during the build phase,
+  // throws "setState() called during build" (same bug fixed in
+  // operations_screen.dart and sign_document_screen.dart).
+  @override void initState() { super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) => Get.find<OperationsController>().loadDetail(widget.id)); }
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Request review')), body: GetBuilder<OperationsController>(builder: (controller) {
     final detail = controller.detailData;
     if (controller.loading || detail == null) return const Center(child: CircularProgressIndicator());

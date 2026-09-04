@@ -18,7 +18,14 @@ class _OperationsState extends State<OperationsScreen> {
   @override void initState() {
     super.initState();
     controller = Get.put(OperationsController(repo: OperationsRepo(api: Get.find<ApiClient>())));
-    controller.load();
+    // load() calls update() immediately (loading=true) before its first
+    // await - calling it synchronously here, during initState's build
+    // phase, threw "setState() called during build" (reproduced directly:
+    // the four API calls all completed fine per the debug log, but the
+    // widget's rebuild tracking was left broken by that error, so the
+    // loading spinner never went away). Every other screen in this app
+    // already defers its initial load the same way.
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.load());
   }
   @override Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Operations'), actions: [IconButton(onPressed: controller.load, icon: const Icon(Icons.refresh))]),

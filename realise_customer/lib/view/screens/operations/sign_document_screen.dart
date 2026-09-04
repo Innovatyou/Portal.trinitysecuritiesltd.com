@@ -59,7 +59,11 @@ class _SignDocumentScreenState extends State<SignDocumentScreen> {
   @override
   void initState() {
     super.initState();
-    _downloadDocument();
+    // _downloadDocument() calls setState() before its first await - doing
+    // that synchronously from here, during initState's build phase, throws
+    // "setState() called during build" (reproduced directly for this exact
+    // pattern in operations_screen.dart - fixed the same way there).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _downloadDocument());
   }
 
   @override

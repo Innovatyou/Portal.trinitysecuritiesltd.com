@@ -8,6 +8,7 @@
 elseif (in_array($field->field_type, ['dropdown','radio'], true)) echo form_dropdown('field_' . $field->field_key, array_combine($config['options'] ?? [], $config['options'] ?? []), '', "id='field-{$field->field_key}' class='form-control'" . ($field->is_required ? ' required' : ''));
 else echo form_input(['id' => 'field-' . $field->field_key, 'name' => 'field_' . $field->field_key, 'type' => in_array($field->field_type, ['date','email','number','url'], true) ? $field->field_type : 'text', 'class' => 'form-control', 'required' => (bool) $field->is_required]); ?>
 <?php if (!empty($config['help'])) { ?><small class="text-muted"><?php echo esc($config['help']); ?></small><?php } ?></div><?php } ?>
+<div class="form-group"><label><?php echo app_lang('attachments'); ?></label><input type="hidden" name="context" value="request"><?php echo view('includes/multi_file_uploader', ['hide_description' => true, 'max_files' => 10]); ?></div>
 <button type="submit" name="save_draft" value="1" class="btn btn-default mr10"><?php echo app_lang('operations_save_as_draft'); ?></button><button type="submit" name="submit_request" value="1" class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button>
 <?php echo form_close(); ?>
 <script>$(document).ready(function(){ $('#operations-create-form').appForm({isModal:false, onSuccess: oaFormFeedback}); });</script>

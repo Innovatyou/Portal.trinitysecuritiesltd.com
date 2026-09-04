@@ -94,6 +94,9 @@ class Operations extends Security_Controller
                 $value = $this->request->getPost('field_' . $field->field_key);
             $this->db->table($this->p . 'oa_request_values')->insert(['request_id' => $id, 'field_id' => $field->id, 'field_key' => $field->field_key, 'value_text' => is_array($value) ? null : clean_data((string) $value), 'value_json' => is_array($value) ? json_encode($value) : null, 'revision_no' => 1, 'created_at' => $now]);
             }
+            for ($fileIndex = 1; ($fileName = $this->request->getPost('file_name_' . $fileIndex)) !== null; $fileIndex++) {
+                if ($fileName) (new Attachment_service())->store($id, (int) $this->login_user->id, basename((string) $fileName), null, 'request');
+            }
             (new Audit_service())->record('request_created', $id, null, $this->login_user);
             if ($this->request->getPost('submit_request')) (new Workflow_engine())->submit($id, $this->login_user);
             $this->db->transCommit();

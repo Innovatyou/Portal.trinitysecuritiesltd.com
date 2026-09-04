@@ -4,14 +4,16 @@ namespace App\Libraries;
 
 /**
  * Issues an SSL certificate for one tenant domain via cPanel's own AutoSSL
- * (UAPI SSL module), not a standalone certbot binary - certbot needed
- * exec()/shell_exec() to run, which this server's PHP-FPM pool hard-disables
- * via php_admin_value (confirmed directly - same restriction Cpanel_mysql
- * works around). Using cPanel's native AutoSSL is also simply the correct
- * approach on a cPanel server: certificates it issues install directly into
- * cPanel's own Apache TLS config, with no separate "reload the web server"
- * step needed - a standalone certbot cert, by contrast, cPanel wouldn't
- * know about at all.
+ * (UAPI SSL module, through Cpanel_api), not a standalone certbot binary -
+ * certbot needed exec(), which this server's PHP-FPM pool hard-disables
+ * (confirmed directly - same restriction Cpanel_mysql works around). Using
+ * cPanel's native AutoSSL is also simply the correct approach on a cPanel
+ * server: certificates it issues install directly into cPanel's own Apache
+ * TLS config, with no separate "reload the web server" step needed.
+ *
+ * AutoSSL only ever considers domains cPanel itself knows about (see
+ * Cpanel_domains - the domain must already be a registered Addon Domain or
+ * Subdomain, not just a row in this app's own tenant_domains table).
  *
  * AutoSSL is account-wide and asynchronous: start_autossl_check() kicks off
  * a domain-control-validation + issuance pass over EVERY domain on the
@@ -37,12 +39,7 @@ class Ssl_issuer {
 
     /** @return array{success: bool, status: 'issued'|'failed'|'checking', message: string} */
     public function issue(string $domain, string $webroot): array {
-        $platform = config('Platform');
-        if (!$platform->cpanel_username || !$platform->cpanel_api_token) {
-            return ['success' => false, 'status' => 'failed', 'message' => 'cPanel API is not configured (platform.cpanel_username / platform.cpanel_api_token).'];
-        }
-
-        $start = $this->call('start_autossl_check', []);
+        $start = Cpanel_api::call('SSL', 'start_autossl_check', []);
         if (!$start['success']) {
             return ['success' => false, 'status' => 'failed', 'message' => "Could not start AutoSSL check: {$start['message']}"];
         }
@@ -51,7 +48,7 @@ class Ssl_issuer {
         for ($i = 0; $i < self::MAX_POLLS; $i++) {
             sleep(self::POLL_INTERVAL_SECONDS);
 
-            $progress = $this->call('is_autossl_check_in_progress', []);
+            $progress = Cpanel_api::call('SSL', 'is_autossl_check_in_progress', []);
             if (!$progress['success']) {
                 return ['success' => false, 'status' => 'failed', 'message' => "Could not check AutoSSL status: {$progress['message']}"];
             }
@@ -69,20 +66,24 @@ class Ssl_issuer {
             ];
         }
 
-        $installed = $this->call('installed_host', ['domain' => $domain]);
+        $installed = Cpanel_api::call('SSL', 'installed_host', ['domain' => $domain]);
         if ($installed['success'] && !empty($installed['data']['certificate'])) {
             return ['success' => true, 'status' => 'issued', 'message' => 'Certificate issued.'];
         }
 
-        $problems = $this->call('get_autossl_problems', []);
+        $problems = Cpanel_api::call('SSL', 'get_autossl_problems', []);
         $reason = null;
         if ($problems['success'] && is_array($problems['data'])) {
             foreach ($problems['data'] as $problem) {
                 if (($problem['domain'] ?? null) === $domain) {
-                    $reason = $problem['reason'] ?? null;
+                    $reason = $problem['problem'] ?? null;
                     break;
                 }
             }
+        }
+
+        if (!$reason && !$installed['success']) {
+            $reason = $installed['message'] ?? null;
         }
 
         return [
@@ -92,49 +93,5 @@ class Ssl_issuer {
                 ? "AutoSSL could not issue a certificate for {$domain}: {$reason}"
                 : "AutoSSL ran but {$domain} still has no certificate - check that its DNS A record points at this server.",
         ];
-    }
-
-    /** @return array{success: bool, message?: string, data?: mixed} */
-    private function call(string $function, array $params): array {
-        $platform = config('Platform');
-
-        if (!function_exists('curl_init')) {
-            return ['success' => false, 'message' => 'PHP curl extension is not available.'];
-        }
-
-        $url = "https://{$platform->cpanel_hostname}:2083/execute/SSL/{$function}";
-
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($params),
-            CURLOPT_HTTPHEADER => ["Authorization: cpanel {$platform->cpanel_username}:{$platform->cpanel_api_token}"],
-            CURLOPT_RETURNTRANSFER => true,
-            // Loopback call to cPanel's own local service on this same
-            // server, not a network hop - see Cpanel_mysql's docblock for
-            // the same reasoning.
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_TIMEOUT => 30,
-        ]);
-        $output = curl_exec($ch);
-        $curl_error = curl_error($ch);
-        curl_close($ch);
-
-        if ($output === false) {
-            return ['success' => false, 'message' => "uapi SSL::{$function} request failed: {$curl_error}"];
-        }
-
-        $decoded = json_decode((string) $output, true);
-        $status = $decoded['status'] ?? null;
-
-        if ($status !== 1) {
-            $errors = $decoded['errors'] ?? null;
-            $message = is_array($errors) ? implode('; ', $errors) : ('uapi SSL::' . $function . ' failed: ' . trim((string) $output));
-
-            return ['success' => false, 'message' => $message];
-        }
-
-        return ['success' => true, 'data' => $decoded['data'] ?? null];
     }
 }

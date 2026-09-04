@@ -163,6 +163,21 @@ class Tenant_provisioning {
             $mysqli->close();
         }
 
+        if ($platform->use_cpanel_provisioning) {
+            // Best-effort, same reasoning as the MySQL cleanup above - read
+            // the domain rows before the transaction below deletes them.
+            $cpanel_domains = new Cpanel_domains();
+            $domain_rows = $landlord->table('tenant_domains')->where('tenant_id', $tenant->id)->get()->getResult();
+            foreach ($domain_rows as $domain_row) {
+                $split = $cpanel_domains->split($domain_row->domain);
+                if ($split) {
+                    [$label, $root_domain] = $split;
+                    $cpanel_domains->remove_subdomain($label, $root_domain);
+                    $cpanel_domains->remove_root_domain($root_domain);
+                }
+            }
+        }
+
         $upload_dir = FCPATH . $tenant->system_file_path;
         if (is_dir($upload_dir)) {
             helper('filesystem');
@@ -216,6 +231,9 @@ class Tenant_provisioning {
             return ['success' => false, 'message' => "Domain '{$domain}' is already registered to a company."];
         }
 
+        $platform = config('Platform');
+        $domain_warnings = $platform->use_cpanel_provisioning ? $this->register_tenant_domain($domain) : [];
+
         // Kept short enough that even with a 9-char cPanel prefix
         // ("admintsl_") prepended, the username stays within MySQL's
         // 32-character limit (7 + 8 + 1 + 6 = 22, +9 = 31).
@@ -225,7 +243,6 @@ class Tenant_provisioning {
         $db_prefix = 'tsl_';
 
         $admin_config = config('Database')->landlord;
-        $platform = config('Platform');
 
         if ($platform->use_cpanel_provisioning) {
             $cpanel = new Cpanel_mysql();
@@ -371,7 +388,44 @@ class Tenant_provisioning {
             return ['success' => false, 'message' => 'Schema and admin user were created, but finalizing the tenant record failed.', 'tenant_id' => $tenant_id];
         }
 
-        return ['success' => true, 'tenant_id' => $tenant_id, 'domain' => $domain, 'plugin_warnings' => $plugin_warnings];
+        return ['success' => true, 'tenant_id' => $tenant_id, 'domain' => $domain, 'warnings' => array_merge($domain_warnings, $plugin_warnings)];
+    }
+
+    /**
+     * Registers $domain with cPanel (Addon Domain for its root, Subdomain
+     * for the "portal." part) so AutoSSL and everything else that depends
+     * on cPanel's own domain registry can see it - see Cpanel_domains.
+     * Best-effort: a failure here comes back as a warning for the admin to
+     * see, not a provisioning failure, since the tenant works over plain
+     * HTTP either way (Apache's catch-all vhost) - it just means SSL won't
+     * work for this domain until whatever failed here is fixed and
+     * retried.
+     *
+     * @return string[] warnings, empty if everything registered cleanly
+     */
+    private function register_tenant_domain(string $domain): array {
+        $cpanel_domains = new Cpanel_domains();
+        $split = $cpanel_domains->split($domain);
+
+        if (!$split) {
+            return ["'{$domain}' doesn't look like \"label.company-domain.tld\" - skipped cPanel domain registration, so SSL won't be available for it."];
+        }
+
+        [$label, $root_domain] = $split;
+
+        if (!$cpanel_domains->is_root_domain_registered($root_domain)) {
+            $result = $cpanel_domains->add_root_domain($root_domain);
+            if (!$result['success']) {
+                return ["Could not register '{$root_domain}' with cPanel: {$result['message']} - SSL won't be available until this is fixed and retried."];
+            }
+        }
+
+        $result = $cpanel_domains->add_subdomain($label, $root_domain);
+        if (!$result['success']) {
+            return ["Could not register '{$domain}' with cPanel: {$result['message']} - SSL won't be available until this is fixed and retried."];
+        }
+
+        return [];
     }
 
     /**

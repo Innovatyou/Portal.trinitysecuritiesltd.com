@@ -90,8 +90,8 @@ class Platform_companies extends Platform_base {
         }
 
         $message = "\"{$data['name']}\" is live at http://{$result['domain']}/";
-        if (!empty($result['plugin_warnings'])) {
-            $message .= ' (plugin setup issues: ' . implode('; ', $result['plugin_warnings']) . ')';
+        if (!empty($result['warnings'])) {
+            $message .= ' (setup issues: ' . implode('; ', $result['warnings']) . ')';
         }
         session()->setFlashdata('success', $message);
         return redirect()->to(site_url('platform_companies'));

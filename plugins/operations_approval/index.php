@@ -125,6 +125,7 @@ $routes->post('operations_settings/save_department', '\operations_approval\Contr
 $routes->post('operations_settings/save_delegation', '\operations_approval\Controllers\Operations_settings::save_delegation', ['filter' => 'csrf']);
 $routes->post('customersapi/operations-login', '\operations_approval\Controllers\Operations_api::login');
 $routes->get('customersapi/operations', '\operations_approval\Controllers\Operations_api::dashboard');
+$routes->post('customersapi/profile/avatar', '\operations_approval\Controllers\Operations_api::avatar');
 $routes->get('customersapi/operations/workflows', '\operations_approval\Controllers\Operations_api::workflows');
 $routes->get('customersapi/operations/requests', '\operations_approval\Controllers\Operations_api::requests');
 $routes->get('customersapi/operations/pending', '\operations_approval\Controllers\Operations_api::pending');

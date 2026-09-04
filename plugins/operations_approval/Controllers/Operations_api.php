@@ -50,6 +50,33 @@ class Operations_api extends ResourceController
         $mine=$this->db->table($this->p.'oa_requests')->where(['requester_id'=>$uid,'deleted'=>0]);
         return $this->respond(['success'=>true,'message'=>'Operations dashboard','data'=>['total'=>(clone $mine)->countAllResults(),'pending'=>(clone $mine)->whereIn('status',['submitted','pending_approval','information_requested'])->countAllResults(),'completed'=>(clone $mine)->where('status','completed')->countAllResults(),'returned'=>(clone $mine)->where('status','returned')->countAllResults(),'pending_approval'=>$this->db->table($this->p.'oa_assignments')->where(['user_id'=>$uid,'status'=>'pending'])->countAllResults(),'can_create'=>(new Operations_permissions())->allowed('operations_create_request',$user)]]);
     }
+    public function avatar():ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        $file=$this->request->getFile('avatar');
+        if(!$file||!$file->isValid())return $this->respond(['success'=>false,'message'=>'No image was received'],422);
+        if(!str_starts_with((string)$file->getMimeType(),'image/'))return $this->respond(['success'=>false,'message'=>'Please upload an image file'],422);
+
+        // move_temp_file/delete_app_files live in app_files_helper.php, one
+        // of the helpers App_Controller normally autoloads for every web
+        // request - this controller extends ResourceController instead
+        // (see the settings-population workaround in __construct() for the
+        // same underlying gap), so load it explicitly rather than depend on
+        // something else in the request happening to have pulled it in.
+        helper(['app_files','file']);
+
+        $userRow=$this->users->get_one((int)$user->id);
+        $stored=move_temp_file('avatar.png',get_setting('profile_image_path'),'',$file->getTempName(),'','',false,$file->getSize());
+        if(!$stored)return $this->respond(['success'=>false,'message'=>'Could not save the image'],500);
+
+        if($userRow->image){
+            delete_app_files(get_setting('profile_image_path'),[@unserialize($userRow->image)]);
+        }
+
+        $this->users->ci_save(['image'=>serialize($stored)],(int)$user->id);
+
+        return $this->respond(['success'=>true,'message'=>'Profile picture updated','data'=>['avatar'=>$stored['file_name']??'']]);
+    }
     public function workflows():ResponseInterface
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();$rows=$this->db->table($this->p.'oa_workflows')->select('id,name,code,description,prefix,current_version_id,settings_json')->where(['status'=>'active','deleted'=>0])->orderBy('name')->get()->getResultArray();

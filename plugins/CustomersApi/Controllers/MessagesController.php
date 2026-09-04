@@ -33,6 +33,12 @@ class MessagesController extends ResourceController
 
     public function __construct()
     {
+        // is_online_user() lives in date_time_helper.php, which - unlike
+        // general_helper.php's get_setting()/get_avatar()/clean_data() -
+        // isn't already loaded for a plain ResourceController. Confirmed
+        // live: conversations() 500'd with "Call to undefined function
+        // is_online_user()" the moment a real row needed it.
+        helper('date_time');
         $this->db = db_connect('default');
         $this->p = $this->db->getPrefix();
         $this->users = new Users_model();

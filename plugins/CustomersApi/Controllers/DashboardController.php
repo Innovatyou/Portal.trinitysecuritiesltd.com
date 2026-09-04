@@ -66,16 +66,28 @@ class DashboardController extends RestApiController {
             return $this->respond(['success' => false, 'message' => 'Unauthorized. Token is missing or invalid.'], ResponseInterface::HTTP_UNAUTHORIZED);
         }
 
-        $user = $this->Users_model->get_one_where( array('email' => $email, 'user_type' => 'client', 'deleted' => 0 ) );
+        // Was filtered to user_type='client' - for a staff account (this app
+        // supports staff login via operations_approval's Operations_api)
+        // get_one_where() then matches nothing and returns an empty stdClass
+        // (not null), landing on the account_disabled response below.
+        // Confirmed live: a real staff account got "success":false,
+        // "default_lang.account_disabled" from this exact endpoint, which
+        // is what DashboardController.setClientMenu() reads permissions
+        // from - so isOperationsEnable (and every other module flag) never
+        // got set, and the dashboard's shortcut cards never rendered even
+        // though the account is perfectly valid and Operations_api's own
+        // endpoints work fine for it. Below, $client_id=0/blank
+        // client_permissions for a staff user already degrade safely
+        // through the existing code (Clients_model->get_one(0) and the
+        // project/invoice queries all just return empty for client_id=0),
+        // and the existing "always add operations if the module is enabled"
+        // line already doesn't care about user_type - so simply not
+        // filtering staff out here is enough to fix it.
+        $user = $this->Users_model->get_one_where( array('email' => $email, 'deleted' => 0 ) );
 
         // get_one_where() returns an empty stdClass (not null) when nothing
-        // matches, which `if ($user)` treats as truthy - a staff account
-        // (this app now supports staff login via operations_approval's
-        // Operations_api) silently fell through this whole branch with an
-        // empty $user, returning a "successful" dashboard of blank/zeroed
-        // client data instead of the clean rejection login()/profile() in
-        // RestApiController give for the same situation. Matching their
-        // `if ($user->id)` check here instead.
+        // matches, which `if ($user)` treats as truthy - matching the clean
+        // `if ($user->id)` check login()/profile() use for the same case.
         if ($user->id) {
             
             $client = $this->Clients_model->get_one( $user->client_id );

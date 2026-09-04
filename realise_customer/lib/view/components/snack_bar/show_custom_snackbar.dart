@@ -18,7 +18,7 @@ class CustomSnackBar {
       }
     }
     message = Converter.removeQuotationAndSpecialCharacterFromString(message);
-    Get.rawSnackbar(
+    _showSafely(() => Get.rawSnackbar(
       progressIndicatorBackgroundColor: ColorResources.transparentColor,
       progressIndicatorValueColor:
           const AlwaysStoppedAnimation<Color>(Colors.transparent),
@@ -39,7 +39,25 @@ class CustomSnackBar {
       borderColor: ColorResources.transparentColor,
       reverseAnimationCurve: Curves.easeOut,
       borderWidth: 2,
-    );
+    ));
+  }
+
+  /// Get.rawSnackbar() only enqueues a job - GetX processes it later via its
+  /// own internal queue, and that later step is where it looks up the
+  /// current route's Overlay. If that runs while the navigator is
+  /// mid-transition (e.g. right after Get.offAllNamed() replaces the whole
+  /// stack post-login), the lookup throws "No Overlay widget found" inside
+  /// GetX's own zone - invisible to any try/catch here, since the throw
+  /// happens well after this function has already returned. Confirmed live:
+  /// this is exactly why error/success messages have been silently not
+  /// appearing with no crash and no visible error. A short defer lets the
+  /// new route's Overlay finish attaching before the job is even queued.
+  static void _showSafely(VoidCallback show) {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      try {
+        show();
+      } catch (_) {}
+    });
   }
 
   static success({required List<String> successList, int duration = 5}) {
@@ -53,7 +71,7 @@ class CustomSnackBar {
       }
     }
     message = Converter.removeQuotationAndSpecialCharacterFromString(message);
-    Get.rawSnackbar(
+    _showSafely(() => Get.rawSnackbar(
       progressIndicatorBackgroundColor: ColorResources.colorGreen,
       progressIndicatorValueColor:
           const AlwaysStoppedAnimation<Color>(ColorResources.transparentColor),
@@ -74,6 +92,6 @@ class CustomSnackBar {
       borderColor: ColorResources.transparentColor,
       reverseAnimationCurve: Curves.easeOut,
       borderWidth: 2,
-    );
+    ));
   }
 }

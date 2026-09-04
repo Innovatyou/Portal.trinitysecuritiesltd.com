@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:realise/core/helper/biometric_auth_helper.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
@@ -85,6 +86,43 @@ class LoginController extends GetxController {
 
     isLoading = false;
     update();
+
+    await checkBiometricAvailability();
+  }
+
+  // Splash only ever offers biometric once, right after app launch, for a
+  // "remember me" session - there was previously no way back to it from
+  // here (e.g. after cancelling that prompt, or landing back on this
+  // screen from Profile's false-logout bug) short of restarting the app.
+  bool showBiometricOption = false;
+
+  Future<void> checkBiometricAvailability() async {
+    final prefs = loginRepo.apiClient.sharedPreferences;
+    final biometricEnabled =
+        prefs.getBool(SharedPreferenceHelper.biometricEnabledKey) ?? false;
+    final isRemember =
+        prefs.getBool(SharedPreferenceHelper.rememberMeKey) ?? false;
+    final hasSession =
+        (prefs.getString(SharedPreferenceHelper.accessTokenKey) ?? '')
+            .isNotEmpty;
+
+    if (!biometricEnabled || !isRemember || !hasSession) {
+      showBiometricOption = false;
+      update();
+      return;
+    }
+
+    showBiometricOption = await BiometricAuthHelper.isDeviceSupported();
+    update();
+  }
+
+  Future<void> signInWithBiometrics() async {
+    final ok = await BiometricAuthHelper.authenticate(
+      reason: 'Verify it\'s you to continue',
+    );
+    if (ok) {
+      Get.offAndToNamed(RouteHelper.dashboardScreen);
+    }
   }
 
   void clearTextField() {

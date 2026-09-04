@@ -308,6 +308,22 @@ class _LoginScreenState extends State<LoginScreen> {
                                             }
                                           },
                                         ),
+                                  if (controller.showBiometricOption) ...[
+                                    const SizedBox(height: 10),
+                                    Center(
+                                      child: TextButton.icon(
+                                        onPressed:
+                                            controller.signInWithBiometrics,
+                                        icon: const Icon(
+                                            Icons.fingerprint_outlined,
+                                            size: 18),
+                                        label: const Text(
+                                          'Sign in with biometrics',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(height: 10),
                                   Center(
                                     child: TextButton.icon(

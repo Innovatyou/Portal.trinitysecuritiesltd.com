@@ -98,10 +98,17 @@ class ApiClient extends GetxService {
           AuthorizationResponseModel model =
               AuthorizationResponseModel.fromJson(jsonDecode(response.body));
           if (!model.success!) {
-            sharedPreferences.setBool(
-                SharedPreferenceHelper.rememberMeKey, false);
-            sharedPreferences.remove(SharedPreferenceHelper.token);
-            Get.offAllNamed(RouteHelper.loginScreen);
+            // A 200 with success:false is a normal business-logic failure
+            // (e.g. "account disabled" on one specific endpoint) - it says
+            // nothing about whether the session itself is still valid, so
+            // this must not force a logout/navigate-to-login the way an
+            // actual 401 response below does. Reproduced directly:
+            // visiting Profile for an account that endpoint doesn't
+            // support kicked the user straight back to the login screen
+            // even though their session token was still perfectly valid
+            // everywhere else. Still returned as statusCode 401 (unchanged)
+            // so callers that already branch on that keep working exactly
+            // as before - only the forced sign-out here is removed.
             return ResponseModel(false, model.message!, 401, response.body);
           }
         } catch (e) {

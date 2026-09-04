@@ -1,1 +1,30 @@
 /*Write your custom css in this file.*/
+
+/* The floating chat toggle (.init-chat-icon) is position:fixed so it always
+   floats relative to the viewport, regardless of being appended inside
+   #mobile-chat-menu-button (a slot in the fixed mobile bottom nav). On some
+   phones/browsers that leaves it overlapping the hamburger menu icon at the
+   other end of the same bar. Reset it to a normal flex sibling here instead
+   of trying to tune bottom/right offsets against a bar whose real height
+   varies by browser chrome/safe-area - this way it can never overlap
+   anything in the bar, in either its closed or "open chat" (.move-chat-icon)
+   state. Desktop is untouched. */
+@media (max-width: 767px) {
+    #mobile-chat-menu-button .init-chat-icon,
+    #mobile-chat-menu-button .init-chat-icon.move-chat-icon {
+        position: static !important;
+        bottom: auto !important;
+        right: auto !important;
+        width: auto !important;
+        height: auto !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        color: #4e5e6a;
+    }
+    #mobile-chat-menu-button .init-chat-icon.has-message {
+        color: #f5325c;
+    }
+}

@@ -109,6 +109,7 @@ $routes->post('operations/cancel/(:num)', '\operations_approval\Controllers\Oper
 $routes->post('operations/delegate/(:num)', '\operations_approval\Controllers\Operations::delegate/$1', ['filter' => 'csrf']);
 $routes->post('operations/upload/(:num)', '\operations_approval\Controllers\Operations::upload/$1', ['filter' => 'csrf']);
 $routes->get('operations/download/(:num)', '\operations_approval\Controllers\Operations::download/$1');
+$routes->post('operations/sign_attachment', '\operations_approval\Controllers\Operations::signAttachment', ['filter' => 'csrf']);
 $routes->get('operations/export', '\operations_approval\Controllers\Operations::export');
 $routes->get('operations/receipt/(:num)', '\operations_approval\Controllers\Operations::receipt/$1');
 $routes->post('operations/receipt/(:num)/email', '\operations_approval\Controllers\Operations::send_receipt_email/$1', ['filter' => 'csrf']);

@@ -12,6 +12,7 @@ use operations_approval\Libraries\Attachment_service;
 use operations_approval\Libraries\Audit_service;
 use operations_approval\Libraries\Notification_service;
 use operations_approval\Libraries\Operations_permissions;
+use operations_approval\Libraries\Pdf_signer;
 use operations_approval\Libraries\Workflow_engine;
 
 class Operations_api extends ResourceController
@@ -205,29 +206,12 @@ class Operations_api extends ResourceController
         $w=(float)$this->request->getPost('width');$h=(float)$this->request->getPost('height');
         if($w<=0||$h<=0||$x<0||$y<0)return $this->respond(['success'=>false,'message'=>'Invalid signature position'],422);
 
-        require_once PLUGINPATH.'operations_approval/Vendor/autoload.php';
-
         try{
-            $pdf=new \setasign\Fpdi\Tcpdf\Fpdi();
-            $pdf->setPrintHeader(false);$pdf->setPrintFooter(false);
-            $pageCount=$pdf->setSourceFile($sourcePath);
-            if($page>$pageCount)return $this->respond(['success'=>false,'message'=>"This document only has {$pageCount} page(s)"],422);
-
-            for($pageNo=1;$pageNo<=$pageCount;$pageNo++){
-                $tplId=$pdf->importPage($pageNo);
-                $size=$pdf->getTemplateSize($tplId);
-                $pdf->AddPage($size['orientation'],[$size['width'],$size['height']]);
-                $pdf->useTemplate($tplId);
-                if($pageNo===$page){
-                    $pdf->Image($signatureFile->getTempName(),$x*$size['width'],$y*$size['height'],$w*$size['width'],$h*$size['height'],'PNG','','',false,300,'',false,false,0,false,false,false);
-                }
-            }
-
             helper('app_files');
             $tempDir=rtrim(get_setting('temp_file_path'),'/\\');
-            if(!is_dir($tempDir)&&!mkdir($tempDir,0755,true))return $this->respond(['success'=>false,'message'=>'Could not prepare storage'],500);
-            $signedFileName=preg_replace('/[^A-Za-z0-9_\-]/','-',pathinfo($attachment->original_name,PATHINFO_FILENAME)).'-signed-'.bin2hex(random_bytes(4)).'.pdf';
-            $pdf->Output($tempDir.'/'.$signedFileName,'F');
+            $signedFileName=Pdf_signer::stamp($sourcePath,$signatureFile->getTempName(),$page,$x,$y,$w,$h,$tempDir,pathinfo($attachment->original_name,PATHINFO_FILENAME));
+        }catch(\DomainException $e){
+            return $this->respond(['success'=>false,'message'=>$e->getMessage()],422);
         }catch(\Throwable $e){
             log_message('error','Operations signAttachment failed: {message}',['message'=>$e->getMessage()]);
             return $this->respond(['success'=>false,'message'=>'Could not sign this document - it may be encrypted or in an unsupported format.'],500);

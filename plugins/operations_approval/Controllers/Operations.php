@@ -10,6 +10,7 @@ use operations_approval\Libraries\Delegation_service;
 use operations_approval\Libraries\Notification_service;
 use operations_approval\Libraries\Report_service;
 use operations_approval\Libraries\Operations_permissions;
+use operations_approval\Libraries\Pdf_signer;
 use operations_approval\Libraries\Workflow_engine;
 
 class Operations extends Security_Controller
@@ -263,6 +264,48 @@ class Operations extends Security_Controller
             (new Audit_service())->record('attachment_uploaded', $id, $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null, $this->login_user, [], ['attachment_id' => $attachmentId]);
             echo json_encode(['success' => true, 'message' => app_lang('operations_attachment_uploaded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
+    }
+
+    public function signAttachment()
+    {
+        $this->validate_submitted_data(['attachment_id' => 'required|numeric']);
+        $attachmentId = (int) $this->request->getPost('attachment_id');
+        $attachment = (new Attachment_service())->get($attachmentId);
+        if (!$attachment) return $this->jsonError(app_lang('not_found'));
+        $request = $this->getRequest((int) $attachment->request_id);
+        if (!$this->canView($request)) return $this->jsonError(app_lang('access_denied'));
+        if (strtolower(pathinfo($attachment->original_name, PATHINFO_EXTENSION)) !== 'pdf') return $this->jsonError(app_lang('operations_not_a_pdf'));
+        $sourcePath = rtrim($attachment->storage_path, '/\\') . DIRECTORY_SEPARATOR . $attachment->storage_name;
+        if (!is_file($sourcePath)) return $this->jsonError(app_lang('not_found'));
+
+        $signature = (string) $this->request->getPost('signature');
+        $signatureData = $signature ? base64_decode(get_array_value(explode(',', $signature), 1) ?: '') : '';
+        if (!$signatureData) return $this->jsonError(app_lang('operations_signature_required'));
+
+        // Fixed bottom-right placement (a plain page-number choice rather than
+        // mobile's drag-to-position UI - this is the simpler web equivalent).
+        $page = (int) $this->request->getPost('page');
+        $x = 0.66; $y = 0.85; $w = 0.30; $h = 0.10;
+
+        try {
+            $tempDir = rtrim(get_setting('temp_file_path'), '/\\');
+            $signedFileName = Pdf_signer::stamp($sourcePath, '@' . $signatureData, $page, $x, $y, $w, $h, $tempDir, pathinfo($attachment->original_name, PATHINFO_FILENAME));
+        } catch (\DomainException $e) {
+            return $this->jsonError($e->getMessage());
+        } catch (\Throwable $e) {
+            log_message('error', 'Operations web signAttachment failed: {message}', ['message' => $e->getMessage()]);
+            return $this->jsonError('Could not sign this document - it may be encrypted or in an unsupported format.');
+        }
+
+        try {
+            $signedAttachmentId = (new Attachment_service())->store((int) $attachment->request_id, (int) $this->login_user->id, $signedFileName, $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null, 'signature');
+        } catch (\Throwable $e) {
+            return $this->jsonError($e->getMessage());
+        }
+
+        (new Audit_service())->record('attachment_signed', (int) $attachment->request_id, $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null, $this->login_user, [], ['original_attachment_id' => $attachmentId, 'signed_attachment_id' => $signedAttachmentId]);
+
+        echo json_encode(['success' => true, 'message' => app_lang('operations_document_signed'), 'redirect_to' => get_uri('operations/view/' . $attachment->request_id)]);
     }
 
     public function download(int $attachmentId)

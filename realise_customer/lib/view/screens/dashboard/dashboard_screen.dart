@@ -7,7 +7,9 @@ import 'package:realise/core/utils/images.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:realise/core/utils/style.dart';
 import 'package:realise/core/utils/url_container.dart';
+import 'package:realise/data/controller/messages/messages_controller.dart';
 import 'package:realise/data/controller/operations/operations_controller.dart';
+import 'package:realise/data/repo/messages/messages_repo.dart';
 import 'package:realise/data/repo/operations/operations_repo.dart';
 import 'package:realise/view/components/app-bar/action_button_icon_widget.dart';
 import 'package:realise/view/components/circle_image_button.dart';
@@ -47,6 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
     Get.put(OperationsRepo(api: Get.find()));
     final operationsController =
         Get.put(OperationsController(repo: Get.find()));
+
+    Get.put(MessagesRepo(api: Get.find()));
+    Get.put(MessagesController(repo: Get.find()));
 
     super.initState();
 

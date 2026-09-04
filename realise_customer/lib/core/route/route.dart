@@ -11,6 +11,8 @@ import 'package:realise/view/screens/intro_section/onboard_intro_screen.dart';
 import 'package:realise/view/screens/invoice/invoice_details_screen.dart';
 import 'package:realise/view/screens/invoice/invoice_screen.dart';
 import 'package:realise/view/screens/menu/menu_screen.dart';
+import 'package:realise/view/screens/messages/chat_screen.dart';
+import 'package:realise/view/screens/messages/conversations_screen.dart';
 import 'package:realise/view/screens/operations/operations_create_screen.dart';
 import 'package:realise/view/screens/operations/operations_detail_screen.dart';
 import 'package:realise/view/screens/operations/operations_screen.dart';
@@ -57,6 +59,8 @@ class RouteHelper {
   static const String operationsScreen = "/operations_screen";
   static const String operationsDetailScreen = "/operations_detail_screen";
   static const String operationsCreateScreen = "/operations_create_screen";
+  static const String messagesScreen = "/messages_screen";
+  static const String chatScreen = "/chat_screen";
 
   List<GetPage> routes = [
     GetPage(name: splashScreen, page: () => const SplashScreen()),
@@ -106,5 +110,9 @@ class RouteHelper {
     GetPage(
         name: operationsCreateScreen,
         page: () => const OperationsCreateScreen()),
+    GetPage(name: messagesScreen, page: () => const ConversationsScreen()),
+    GetPage(
+        name: chatScreen,
+        page: () => ChatScreen(otherUserId: Get.arguments)),
   ];
 }

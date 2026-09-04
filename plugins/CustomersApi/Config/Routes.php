@@ -61,5 +61,11 @@ $routes->group('customersapi', $customers_api_namespace, function ($routes) {
     $routes->post('tickets/(:num)/mark-as-closed', 'TicketsController::markTicketAsClosed/$1'); // Mark Ticket As Closed
     $routes->post('tickets/(:num)/mark-as-opened', 'TicketsController::markTicketAsOpened/$1'); // Mark Ticket As Opened
     $routes->post('tickets/(:num)/comment', 'TicketsController::storeTicketComment/$1'); // Add Comment to Ticket
+
+    // Messages (staff + client chat, backed by the same `messages` table as the web Messages module)
+    $routes->get('messages/conversations', 'MessagesController::conversations'); // Get Conversations List
+    $routes->get('messages/contacts', 'MessagesController::contacts'); // Get People You Can Message
+    $routes->get('messages/thread/(:num)', 'MessagesController::thread/$1'); // Get Thread With One Person
+    $routes->post('messages/send', 'MessagesController::send'); // Send A Message
 });
 

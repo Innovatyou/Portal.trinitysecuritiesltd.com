@@ -86,6 +86,27 @@ class HomeDrawer extends StatelessWidget {
               builder: (controller) {
                 return Column(
                   children: [
+                    ListTile(
+                      leading: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: ColorResources.primaryColor,
+                      ),
+                      title: Text(
+                        'Messages',
+                        style: regularDefault.copyWith(
+                          color: Theme.of(context).textTheme.bodyMedium!.color,
+                        ),
+                      ),
+                      trailing: const Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: Dimensions.space12,
+                        color: ColorResources.contentTextColor,
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Get.toNamed(RouteHelper.messagesScreen);
+                      },
+                    ),
                     if (controller.isOperationsEnable)
                       ListTile(
                         leading: const Icon(

@@ -22,7 +22,17 @@ if (get_setting("module_chat") && $can_chat) {
                     $('#mobile-chat-menu-button').append($chatIconWrapper).find(".init-chat-icon").removeClass("init-chat-icon");
                 }
                 if (!$("#js-rise-chat-wrapper").length) {
-                    $('#mobile-chat-menu-button').append($chatBoxWrapper);
+                    // Appending the panel inside the fixed bottom nav (which
+                    // sets will-change:transform for scroll performance)
+                    // makes that nav a new containing block for
+                    // position:fixed descendants - the panel's "go
+                    // fullscreen" CSS (position:fixed; top:0; height:100%)
+                    // then resolves against that slim nav bar instead of the
+                    // real viewport, so it never actually covers the screen
+                    // and ends up visually parked over the hamburger menu
+                    // icon instead. Appending to <body> (same as desktop)
+                    // keeps it a real viewport-relative fixed element.
+                    $('body').append($chatBoxWrapper);
                 }
             } else {
                 if (!hideChatIcon) {

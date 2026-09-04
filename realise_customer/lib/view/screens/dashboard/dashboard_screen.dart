@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/route/route.dart';
 import 'package:realise/core/utils/color_resources.dart';
 import 'package:realise/core/utils/dimensions.dart';
@@ -6,10 +7,13 @@ import 'package:realise/core/utils/images.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:realise/core/utils/style.dart';
 import 'package:realise/core/utils/url_container.dart';
+import 'package:realise/data/controller/operations/operations_controller.dart';
+import 'package:realise/data/repo/operations/operations_repo.dart';
 import 'package:realise/view/components/app-bar/action_button_icon_widget.dart';
 import 'package:realise/view/components/circle_image_button.dart';
 import 'package:realise/view/components/custom_loader/custom_loader.dart';
 import 'package:realise/view/components/no_data.dart';
+import 'package:realise/view/screens/dashboard/widget/modern_stat_card.dart';
 import 'package:realise/view/screens/dashboard/widget/overview_card.dart';
 import 'package:realise/view/screens/dashboard/widget/drawer.dart';
 import 'package:realise/view/screens/project/widget/project_card.dart';
@@ -35,10 +39,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final controller = Get.put(DashboardController(dashboardRepo: Get.find()));
     controller.isLoading = true;
 
+    // Operations stats/inbox/mine-count for the quick-access cards below -
+    // separate from DashboardController, which only ever carries
+    // client-account data (projects/invoices/payments) that's blank for a
+    // staff account like this one. This is the same Operations feature
+    // already used by OperationsScreen, just surfaced here too.
+    Get.put(OperationsRepo(api: Get.find()));
+    final operationsController =
+        Get.put(OperationsController(repo: Get.find()));
+
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
       controller.initialData();
+      operationsController.load();
     });
   }
 
@@ -134,8 +148,25 @@ class _HomeScreenState extends State<HomeScreen> {
                                               .color),
                                     ),
                                     TextSpan(
-                                      text:
-                                          '${controller.dashboardModel.data?.clientData?.firstName ?? ''} ${controller.dashboardModel.data?.clientData?.lastName ?? ''}',
+                                      text: () {
+                                        final clientName =
+                                            '${controller.dashboardModel.data?.clientData?.firstName ?? ''} ${controller.dashboardModel.data?.clientData?.lastName ?? ''}'
+                                                .trim();
+                                        if (clientName.isNotEmpty) {
+                                          return clientName;
+                                        }
+                                        // Staff accounts have no client
+                                        // record - fall back to the name
+                                        // saved at login time instead.
+                                        return controller
+                                                .dashboardRepo
+                                                .apiClient
+                                                .sharedPreferences
+                                                .getString(
+                                                    SharedPreferenceHelper
+                                                        .userNameKey) ??
+                                            '';
+                                      }(),
                                       style: regularLarge.copyWith(
                                           color: Theme.of(context)
                                               .textTheme
@@ -144,16 +175,80 @@ class _HomeScreenState extends State<HomeScreen> {
                                     ),
                                   ])),
                                   const SizedBox(height: Dimensions.space5),
-                                  Text(
-                                    '${controller.dashboardModel.data?.clientData?.jobTitle ?? ''} - ${controller.dashboardModel.data?.clientData?.companyName ?? ''}',
-                                    style: regularSmall.copyWith(
-                                        color: ColorResources.blueGreyColor),
-                                  )
+                                  if ('${controller.dashboardModel.data?.clientData?.jobTitle ?? ''}${controller.dashboardModel.data?.clientData?.companyName ?? ''}'
+                                      .isNotEmpty)
+                                    Text(
+                                      '${controller.dashboardModel.data?.clientData?.jobTitle ?? ''} - ${controller.dashboardModel.data?.clientData?.companyName ?? ''}',
+                                      style: regularSmall.copyWith(
+                                          color: ColorResources.blueGreyColor),
+                                    )
                                 ],
                               )
                             ],
                           ),
                         ),
+                        if (controller.isOperationsEnable)
+                          GetBuilder<OperationsController>(
+                            builder: (ops) => Padding(
+                              padding: const EdgeInsets.only(
+                                  bottom: Dimensions.space15),
+                              child: GridView.count(
+                                crossAxisCount: 2,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                mainAxisSpacing: Dimensions.space10,
+                                crossAxisSpacing: Dimensions.space10,
+                                childAspectRatio: 1.4,
+                                children: [
+                                  ModernStatCard(
+                                    icon: Icons.assignment_outlined,
+                                    label: 'My Requests',
+                                    value: '${ops.stats['total'] ?? 0}',
+                                    colors: const [
+                                      Color(0xFF6D8CFF),
+                                      Color(0xFF4A63D6),
+                                    ],
+                                    onTap: () =>
+                                        Get.toNamed(RouteHelper.operationsScreen),
+                                  ),
+                                  ModernStatCard(
+                                    icon: Icons.pending_actions_outlined,
+                                    label: 'Pending Approvals',
+                                    value:
+                                        '${ops.stats['pending_approval'] ?? 0}',
+                                    colors: const [
+                                      Color(0xFFFFA85C),
+                                      Color(0xFFE87A2E),
+                                    ],
+                                    onTap: () =>
+                                        Get.toNamed(RouteHelper.operationsScreen),
+                                  ),
+                                  ModernStatCard(
+                                    icon: Icons.check_circle_outline,
+                                    label: 'Completed',
+                                    value: '${ops.stats['completed'] ?? 0}',
+                                    colors: const [
+                                      Color(0xFF5CD98A),
+                                      Color(0xFF2FAE63),
+                                    ],
+                                    onTap: () =>
+                                        Get.toNamed(RouteHelper.operationsScreen),
+                                  ),
+                                  ModernStatCard(
+                                    icon: Icons.add_circle_outline,
+                                    label: 'New Request',
+                                    value: '',
+                                    colors: const [
+                                      Color(0xFFB07CFF),
+                                      Color(0xFF8B4FE0),
+                                    ],
+                                    onTap: () => Get.toNamed(
+                                        RouteHelper.operationsCreateScreen),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         Row(
                           children: [
                             if (controller.isProjectsEnable)

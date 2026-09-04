@@ -43,6 +43,9 @@ class Data {
     String? type,
     String? address,
     String? email,
+    String? jobTitle,
+    String? userType,
+    String? avatar,
   }) {
     _token = token;
     _clientId = clientId;
@@ -52,6 +55,9 @@ class Data {
     _type = type;
     _address = address;
     _email = email;
+    _jobTitle = jobTitle;
+    _userType = userType;
+    _avatar = avatar;
   }
 
   Data.fromJson(dynamic json) {
@@ -63,6 +69,13 @@ class Data {
     _type = json['type'];
     _address = json['address'];
     _email = json['email'];
+    // Only present for staff logins (operations-login) - client logins
+    // don't send these, and ProfileScreen falls back to them precisely
+    // because a client account already has a real profile() response to
+    // show instead.
+    _jobTitle = json['job_title'];
+    _userType = json['user_type'];
+    _avatar = json['avatar'];
   }
   String? _token;
   String? _clientId;
@@ -72,6 +85,9 @@ class Data {
   String? _type;
   String? _address;
   String? _email;
+  String? _jobTitle;
+  String? _userType;
+  String? _avatar;
 
   String? get token => _token;
   String? get clientId => _clientId;
@@ -81,6 +97,9 @@ class Data {
   String? get type => _type;
   String? get address => _address;
   String? get email => _email;
+  String? get jobTitle => _jobTitle;
+  String? get userType => _userType;
+  String? get avatar => _avatar;
 
   Map<String, dynamic> toJson() {
     final map = <String, dynamic>{};
@@ -92,6 +111,9 @@ class Data {
     map['type'] = _type;
     map['address'] = _address;
     map['email'] = _email;
+    map['job_title'] = _jobTitle;
+    map['user_type'] = _userType;
+    map['avatar'] = _avatar;
     return map;
   }
 }

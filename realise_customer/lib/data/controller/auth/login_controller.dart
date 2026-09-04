@@ -42,6 +42,23 @@ class LoginController extends GetxController {
         responseModel.data?.clientId.toString() ?? '-1');
     await loginRepo.apiClient.sharedPreferences.setString(
         SharedPreferenceHelper.accessTokenKey, responseModel.data?.token ?? '');
+    // Dashboard's client-account name/email come back blank for staff
+    // logins (the customersapi/dashboard endpoint only knows about
+    // client-type accounts) - persisted here so the header has something
+    // real to fall back to instead of showing "Welcome -".
+    await loginRepo.apiClient.sharedPreferences.setString(
+        SharedPreferenceHelper.userNameKey,
+        '${responseModel.data?.firstName ?? ''} ${responseModel.data?.lastName ?? ''}'
+            .trim());
+    await loginRepo.apiClient.sharedPreferences.setString(
+        SharedPreferenceHelper.userEmailKey, responseModel.data?.email ?? '');
+    await loginRepo.apiClient.sharedPreferences.setString(
+        SharedPreferenceHelper.userJobTitleKey,
+        responseModel.data?.jobTitle ?? '');
+    await loginRepo.apiClient.sharedPreferences.setString(
+        SharedPreferenceHelper.userAvatarKey, responseModel.data?.avatar ?? '');
+    await loginRepo.apiClient.sharedPreferences.setString(
+        SharedPreferenceHelper.userTypeKey, responseModel.data?.userType ?? '');
 
     Get.offAndToNamed(RouteHelper.dashboardScreen);
 

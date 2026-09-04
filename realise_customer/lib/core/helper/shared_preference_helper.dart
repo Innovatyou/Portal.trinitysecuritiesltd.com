@@ -5,6 +5,9 @@ class SharedPreferenceHelper {
   static const String userEmailKey = 'user_email';
   static const String userNameKey = 'user_name';
   static const String userPhoneNumberKey = 'user_phone_number';
+  static const String userJobTitleKey = 'user_job_title';
+  static const String userAvatarKey = 'user_avatar';
+  static const String userTypeKey = 'user_type';
   static const String rememberMeKey = 'remember me';
   static const String generalSettingKey = 'general-setting-key';
   static const String moduleSettingKey = 'module-setting-key';

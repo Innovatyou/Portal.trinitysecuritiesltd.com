@@ -46,4 +46,28 @@ class Platform extends BaseConfig {
      * Set via .env: platform.cpanel_username = admintsl
      */
     public string $cpanel_username = '';
+
+    /**
+     * cPanel API token for the account above (Security > Manage API Tokens
+     * in that account's own cPanel). Cpanel_mysql calls UAPI over HTTPS
+     * with this rather than shelling out to the uapi binary, because this
+     * server's PHP-FPM pools hard-disable exec/shell_exec/system/passthru
+     * via php_admin_value (confirmed directly - applied uniformly across
+     * every domain on this server, a deliberate hardening policy that
+     * isn't worth weakening just for this feature).
+     *
+     * Set via .env: platform.cpanel_api_token = ...
+     */
+    public string $cpanel_api_token = '';
+
+    /**
+     * Host cPanel's UAPI is reached at (port 2083, HTTPS). 127.0.0.1 talks
+     * to cPanel's own local service on this same server - SSL verification
+     * is deliberately skipped for that call in Cpanel_mysql since it's a
+     * loopback request, not a network hop a man-in-the-middle could
+     * intercept.
+     *
+     * Set via .env: platform.cpanel_hostname = 127.0.0.1
+     */
+    public string $cpanel_hostname = '127.0.0.1';
 }

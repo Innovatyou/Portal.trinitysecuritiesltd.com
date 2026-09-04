@@ -67,8 +67,16 @@ class DashboardController extends RestApiController {
         }
 
         $user = $this->Users_model->get_one_where( array('email' => $email, 'user_type' => 'client', 'deleted' => 0 ) );
-        
-        if ($user) {
+
+        // get_one_where() returns an empty stdClass (not null) when nothing
+        // matches, which `if ($user)` treats as truthy - a staff account
+        // (this app now supports staff login via operations_approval's
+        // Operations_api) silently fell through this whole branch with an
+        // empty $user, returning a "successful" dashboard of blank/zeroed
+        // client data instead of the clean rejection login()/profile() in
+        // RestApiController give for the same situation. Matching their
+        // `if ($user->id)` check here instead.
+        if ($user->id) {
             
             $client = $this->Clients_model->get_one( $user->client_id );
             

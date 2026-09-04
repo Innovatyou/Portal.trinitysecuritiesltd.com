@@ -137,20 +137,31 @@ class Tenant_provisioning {
             return ['success' => false, 'message' => "No tenant with slug '{$slug}'."];
         }
 
-        $admin_config = config('Database')->landlord;
-        $mysqli = new \mysqli($admin_config['hostname'], $admin_config['username'], $admin_config['password'], '', (int) $admin_config['port']);
-        if ($mysqli->connect_errno) {
-            return ['success' => false, 'message' => "Could not connect to MySQL as an admin user: {$mysqli->connect_error}"];
-        }
+        $platform = config('Platform');
 
-        // Backtick-quoted identifiers can't be parameterized; db_database
-        // and db_username are values this app generated itself at
-        // provisioning time (tenant_<slug> / tenant_<slug>_<hex>), never
-        // user-supplied at this point, so this mirrors how provision()
-        // already builds the equivalent CREATE DATABASE/USER statements.
-        $mysqli->query("DROP DATABASE IF EXISTS `{$tenant->db_database}`");
-        $mysqli->query("DROP USER IF EXISTS '{$tenant->db_username}'@'%'");
-        $mysqli->close();
+        if ($platform->use_cpanel_provisioning) {
+            // Best-effort, same as the raw-SQL path below (DROP ... IF
+            // EXISTS) - the file/landlord-row cleanup after this still runs
+            // either way.
+            $cpanel = new Cpanel_mysql();
+            $cpanel->delete_database($tenant->db_database);
+            $cpanel->delete_user($tenant->db_username);
+        } else {
+            $admin_config = config('Database')->landlord;
+            $mysqli = new \mysqli($admin_config['hostname'], $admin_config['username'], $admin_config['password'], '', (int) $admin_config['port']);
+            if ($mysqli->connect_errno) {
+                return ['success' => false, 'message' => "Could not connect to MySQL as an admin user: {$mysqli->connect_error}"];
+            }
+
+            // Backtick-quoted identifiers can't be parameterized; db_database
+            // and db_username are values this app generated itself at
+            // provisioning time (tenant_<slug> / tenant_<slug>_<hex>), never
+            // user-supplied at this point, so this mirrors how provision()
+            // already builds the equivalent CREATE DATABASE/USER statements.
+            $mysqli->query("DROP DATABASE IF EXISTS `{$tenant->db_database}`");
+            $mysqli->query("DROP USER IF EXISTS '{$tenant->db_username}'@'%'");
+            $mysqli->close();
+        }
 
         $upload_dir = FCPATH . $tenant->system_file_path;
         if (is_dir($upload_dir)) {
@@ -205,23 +216,51 @@ class Tenant_provisioning {
             return ['success' => false, 'message' => "Domain '{$domain}' is already registered to a company."];
         }
 
-        $db_database = 'tenant_' . $slug;
-        $db_username = 'tenant_' . substr($slug, 0, 10) . '_' . bin2hex(random_bytes(3));
+        // Kept short enough that even with a 9-char cPanel prefix
+        // ("admintsl_") prepended, the username stays within MySQL's
+        // 32-character limit (7 + 8 + 1 + 6 = 22, +9 = 31).
+        $db_database_short = 'tenant_' . $slug;
+        $db_username_short = 'tenant_' . substr($slug, 0, 8) . '_' . bin2hex(random_bytes(3));
         $db_password = bin2hex(random_bytes(24));
         $db_prefix = 'tsl_';
 
         $admin_config = config('Database')->landlord;
+        $platform = config('Platform');
 
-        $mysqli = new \mysqli($admin_config['hostname'], $admin_config['username'], $admin_config['password'], '', (int) $admin_config['port']);
-        if ($mysqli->connect_errno) {
-            return ['success' => false, 'message' => "Could not connect to MySQL as an admin user: {$mysqli->connect_error}"];
+        if ($platform->use_cpanel_provisioning) {
+            $cpanel = new Cpanel_mysql();
+            $db_database = $cpanel->prefixed($db_database_short);
+            $db_username = $cpanel->prefixed($db_username_short);
+
+            $result = $cpanel->create_database($db_database);
+            if (!$result['success']) {
+                return ['success' => false, 'message' => "Could not create tenant database: {$result['message']}"];
+            }
+
+            $result = $cpanel->create_user($db_username, $db_password);
+            if (!$result['success']) {
+                return ['success' => false, 'message' => "Could not create tenant database user: {$result['message']}"];
+            }
+
+            $result = $cpanel->grant_all($db_username, $db_database);
+            if (!$result['success']) {
+                return ['success' => false, 'message' => "Could not grant tenant privileges: {$result['message']}"];
+            }
+        } else {
+            $db_database = $db_database_short;
+            $db_username = $db_username_short;
+
+            $mysqli = new \mysqli($admin_config['hostname'], $admin_config['username'], $admin_config['password'], '', (int) $admin_config['port']);
+            if ($mysqli->connect_errno) {
+                return ['success' => false, 'message' => "Could not connect to MySQL as an admin user: {$mysqli->connect_error}"];
+            }
+
+            $mysqli->query("CREATE DATABASE IF NOT EXISTS `{$db_database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            $mysqli->query("CREATE USER IF NOT EXISTS '{$db_username}'@'%' IDENTIFIED BY '{$db_password}'");
+            $mysqli->query("GRANT ALL PRIVILEGES ON `{$db_database}`.* TO '{$db_username}'@'%'");
+            $mysqli->query("FLUSH PRIVILEGES");
+            $mysqli->close();
         }
-
-        $mysqli->query("CREATE DATABASE IF NOT EXISTS `{$db_database}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-        $mysqli->query("CREATE USER IF NOT EXISTS '{$db_username}'@'%' IDENTIFIED BY '{$db_password}'");
-        $mysqli->query("GRANT ALL PRIVILEGES ON `{$db_database}`.* TO '{$db_username}'@'%'");
-        $mysqli->query("FLUSH PRIVILEGES");
-        $mysqli->close();
 
         $now = date('Y-m-d H:i:s');
         $system_file_path = "files/tenants/{$slug}/";

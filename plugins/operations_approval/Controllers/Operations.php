@@ -276,11 +276,28 @@ class Operations extends Security_Controller
     {
         $request = $this->getRequest($id);
         if (!$this->canView($request)) app_redirect('forbidden');
-        $fileName = $this->request->getPost('file_name') ?: $this->request->getPost('file_name_1');
-        if (!$fileName) return $this->jsonError(app_lang('operations_file_required'));
+        $stageId = $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null;
+        $context = clean_data($this->request->getPost('context') ?: 'request');
+
+        // multi_file_uploader.php numbers files file_name_1, file_name_2,
+        // ... (max_files is no longer capped at 1 here) - only reading
+        // file_name/file_name_1 silently dropped every file past the first.
+        $fileNames = [];
+        $single = $this->request->getPost('file_name');
+        if ($single) $fileNames[] = $single;
+        for ($fileIndex = 1; ($fileName = $this->request->getPost('file_name_' . $fileIndex)) !== null; $fileIndex++) {
+            if ($fileName) $fileNames[] = $fileName;
+        }
+        if (!$fileNames) return $this->jsonError(app_lang('operations_file_required'));
+
         try {
-            $attachmentId = (new Attachment_service())->store($id, (int) $this->login_user->id, basename((string) $fileName), $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null, clean_data($this->request->getPost('context') ?: 'request'));
-            (new Audit_service())->record('attachment_uploaded', $id, $request->current_stage_instance_id ? (int) $request->current_stage_instance_id : null, $this->login_user, [], ['attachment_id' => $attachmentId]);
+            $attachmentIds = [];
+            foreach ($fileNames as $fileName) {
+                $attachmentIds[] = (new Attachment_service())->store($id, (int) $this->login_user->id, basename((string) $fileName), $stageId, $context);
+            }
+            foreach ($attachmentIds as $attachmentId) {
+                (new Audit_service())->record('attachment_uploaded', $id, $stageId, $this->login_user, [], ['attachment_id' => $attachmentId]);
+            }
             echo json_encode(['success' => true, 'message' => app_lang('operations_attachment_uploaded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
     }

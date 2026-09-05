@@ -2,10 +2,10 @@ import 'dart:io';import 'package:file_picker/file_picker.dart';import 'package:f
 class OperationsCreateScreen extends StatefulWidget{const OperationsCreateScreen({super.key});@override State<OperationsCreateScreen> createState()=>_S();}
 class _S extends State<OperationsCreateScreen>{OperationsWorkflow? flow;final title=TextEditingController();String priority='normal';final values=<String,TextEditingController>{};final pickedFiles=<File>[];
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    final path = result?.files.single.path;
-    if (path == null) return;
-    setState(() => pickedFiles.add(File(path)));
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final paths = (result?.paths ?? []).whereType<String>();
+    if (paths.isEmpty) return;
+    setState(() => pickedFiles.addAll(paths.map((p) => File(p))));
   }
   Future<void> _submit(OperationsController c) async {
     if (title.text.trim().isEmpty) return;

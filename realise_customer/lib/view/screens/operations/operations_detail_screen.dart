@@ -70,10 +70,11 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
   ]));
 
   Future<void> _pickAndUpload(OperationsController controller) async {
-    final result = await FilePicker.platform.pickFiles();
-    final path = result?.files.single.path;
-    if (path == null) return;
-    await controller.uploadAttachment(File(path));
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final paths = (result?.paths ?? []).whereType<String>();
+    for (final path in paths) {
+      await controller.uploadAttachment(File(path));
+    }
   }
 
   Widget _informationRequest(OperationsController controller, OperationsDetail detail) { final response = TextEditingController(); final q = detail.openConversation?['question']?.toString() ?? ''; return DepthCard(accent: Colors.orange, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

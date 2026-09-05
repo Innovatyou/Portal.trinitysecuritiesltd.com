@@ -335,8 +335,18 @@ class Operations_api extends ResourceController
     }
     private function auth():?object
     {
+        // Was guarded by !isset($_SERVER['HTTP_X_AUTHORIZATION']) - broken
+        // whenever the server environment pre-populates that key as an
+        // empty string for every request (common with some PHP-FPM/Apache
+        // configs), since isset() is true for an empty string too. That
+        // silently skipped the query-token fallback entirely and download()
+        // (used for the exact case with no custom-header support, e.g. a
+        // plain browser link) 401'd every time. Confirmed live with a real,
+        // unexpired token. No real request ever sends both a genuine header
+        // and an access_token query param, so setting it unconditionally is
+        // safe.
         $queryToken=(string)$this->request->getGet('access_token');
-        if($queryToken&&!isset($_SERVER['HTTP_X_AUTHORIZATION']))$_SERVER['HTTP_X_AUTHORIZATION']=$queryToken;
+        if($queryToken)$_SERVER['HTTP_X_AUTHORIZATION']=$queryToken;
         if(!$this->secret||!class_exists(JWT::class))return null;$header=$this->request->getHeaderLine('Authorization')?:$this->request->getHeaderLine('X-Authorization');if(!$header)$header=(string)($_SERVER['HTTP_AUTHORIZATION']??$_SERVER['REDIRECT_HTTP_AUTHORIZATION']??$_SERVER['HTTP_X_AUTHORIZATION']??'');if(!$header&&function_exists('apache_request_headers')){$headers=apache_request_headers();$header=(string)($headers['Authorization']??$headers['authorization']??$headers['X-Authorization']??'');}$token=preg_replace('/^Bearer\s+/i','',trim($header));if(!$token)return null;try{
     $jwt=JWT::decode($token,new Key($this->secret,'HS256'));
     $email=$jwt->data->email??'';

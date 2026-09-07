@@ -126,8 +126,12 @@ class Operations_workflows extends Security_Controller
     {
         $workflow = $this->db->table($this->p . 'oa_workflows')->where(['id' => $id, 'deleted' => 0])->get()->getRow();
         if (!$workflow) return $this->jsonError(app_lang('record_not_found'));
-        $inFlight = $this->db->table($this->p . 'oa_requests')->where(['workflow_id' => $id, 'deleted' => 0])->whereIn('status', ['draft', 'submitted', 'pending_approval', 'returned', 'information_requested', 'configuration_error'])->countAllResults();
-        if ($inFlight) return $this->jsonError(app_lang('operations_workflow_has_active_requests'));
+        $blocking = $this->db->table($this->p . 'oa_requests')->select('id,request_no,status')->where(['workflow_id' => $id, 'deleted' => 0])->whereIn('status', ['draft', 'submitted', 'pending_approval', 'returned', 'information_requested', 'configuration_error'])->orderBy('created_at')->get()->getResult();
+        if ($blocking) {
+            $labels = array_map(fn ($r) => $r->request_no ?: ('#' . $r->id), array_slice($blocking, 0, 5));
+            if (count($blocking) > 5) $labels[] = '+' . (count($blocking) - 5) . ' more';
+            return $this->jsonError(sprintf(app_lang('operations_workflow_has_active_requests'), implode(', ', $labels)));
+        }
         $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['deleted' => 1, 'updated_at' => get_current_utc_time()]);
         echo json_encode(['success' => true, 'message' => app_lang('operations_workflow_deleted'), 'redirect_to' => get_uri('operations_workflows')]);
     }

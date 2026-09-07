@@ -414,10 +414,25 @@ class Operations extends Security_Controller
     {
         $this->validate_submitted_data(['stage_instance_id' => 'required|numeric', 'lock_version' => 'required|numeric', 'decision' => 'required']);
         $decision = (string) $this->request->getPost('decision');
+        $stageInstanceId = (int) $this->request->getPost('stage_instance_id');
         $requiredPermission = ['approve' => 'operations_approve', 'reject' => 'operations_reject', 'return' => 'operations_return'][$decision] ?? '';
-        if (!$requiredPermission || !$this->permissions->allowed($requiredPermission, $this->login_user)) app_redirect('forbidden');
+        // A workflow stage names its own approver(s) - a specific user, a
+        // role, a group, the requester's manager/department head - which
+        // is already a deliberate, per-stage authorization independent of
+        // the blanket operations_approve/reject/return role permissions
+        // (those exist for menu visibility and admin-override, not as a
+        // second mandatory gate). Requiring both meant an admin could
+        // assign someone through the workflow builder who could never
+        // actually act on it unless their role separately had the
+        // matching permission checked too - view() only checks the
+        // assignment when deciding whether to show the decision form, so
+        // the approver saw Approve/Reject/Return, then got silently
+        // redirected to "forbidden" (a non-JSON response, hence the
+        // generic client-side error) on submit.
+        $isAssignedApprover = $stageInstanceId && $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
+        if (!$requiredPermission || (!$isAssignedApprover && !$this->permissions->allowed($requiredPermission, $this->login_user))) app_redirect('forbidden');
         try {
-            (new Workflow_engine())->decide($id, (int) $this->request->getPost('stage_instance_id'), (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user);
+            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user);
             echo json_encode(['success' => true, 'message' => app_lang('operations_decision_recorded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) {
             log_message('warning', 'Operations decision rejected: {message}', ['message' => $e->getMessage()]);

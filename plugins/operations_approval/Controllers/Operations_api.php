@@ -129,7 +129,13 @@ class Operations_api extends ResourceController
     }
     public function decision(int $id):ResponseInterface
     {
-        $user=$this->auth();if(!$user)return $this->unauthorized();$decision=(string)$this->request->getPost('decision');$permission=['approve'=>'operations_approve','reject'=>'operations_reject','return'=>'operations_return'][$decision]??'';if(!$permission||!(new Operations_permissions())->allowed($permission,$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,(int)$this->request->getPost('stage_instance_id'),(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user);return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
+        $user=$this->auth();if(!$user)return $this->unauthorized();$decision=(string)$this->request->getPost('decision');$stageInstanceId=(int)$this->request->getPost('stage_instance_id');$permission=['approve'=>'operations_approve','reject'=>'operations_reject','return'=>'operations_return'][$decision]??'';
+        // Same fix as Operations::decide() (web): being the workflow's own
+        // assigned pending approver for this stage is already sufficient
+        // authorization - it shouldn't also require a separate blanket
+        // role permission the admin may never have thought to grant.
+        $isAssignedApprover=$stageInstanceId&&$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$stageInstanceId,'user_id'=>$user->id,'status'=>'pending'])->countAllResults()>0;
+        if(!$permission||(!$isAssignedApprover&&!(new Operations_permissions())->allowed($permission,$user)))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,$stageInstanceId,(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user);return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
     }
     public function comment(int $id):ResponseInterface
     {

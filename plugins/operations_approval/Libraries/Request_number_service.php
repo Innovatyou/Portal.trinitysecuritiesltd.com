@@ -16,13 +16,31 @@ class Request_number_service
     // empty. Keying the counter by the prefix itself instead - everyone
     // who shares "REQ" shares one counter - makes a collision structurally
     // impossible rather than merely unlikely.
+    //
+    // The table is created here on first use, and a never-before-seen
+    // prefix/year is seeded from the request numbers already issued in
+    // oa_requests (not the old per-workflow oa_sequences counters, which
+    // could already be out of sync with reality). Every tenant runs
+    // install/sql on its own schedule via the plugin's "Updates" action,
+    // so this can't assume that migration has already applied - it has to
+    // work correctly the moment the code deploys, on its own.
     public function next(string $prefix): string
     {
         $normalizedPrefix = strtoupper(preg_replace('/[^A-Z0-9_-]/i', '', $prefix ?: 'REQ'));
         $db = db_connect('default');
-        $table = $db->getPrefix() . 'oa_prefix_sequences';
+        $dbPrefix = $db->getPrefix();
+        $table = $dbPrefix . 'oa_prefix_sequences';
         $year = (int) date('Y');
-        $db->query("INSERT INTO `{$table}` (`prefix`,`sequence_year`,`last_number`) VALUES (?,?,0) ON DUPLICATE KEY UPDATE `last_number`=`last_number`", [$normalizedPrefix, $year]);
+
+        $db->query("CREATE TABLE IF NOT EXISTS `{$table}` (`prefix` VARCHAR(20) NOT NULL, `sequence_year` SMALLINT UNSIGNED NOT NULL, `last_number` BIGINT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (`prefix`,`sequence_year`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $existing = $db->query("SELECT `last_number` FROM `{$table}` WHERE `prefix`=? AND `sequence_year`=?", [$normalizedPrefix, $year])->getRow();
+        if (!$existing) {
+            $requestsTable = $dbPrefix . 'oa_requests';
+            $seed = $db->query("SELECT MAX(CAST(SUBSTRING_INDEX(`request_no`,'-',-1) AS UNSIGNED)) seed FROM `{$requestsTable}` WHERE `request_no` LIKE ?", [$normalizedPrefix . '-' . $year . '-%'])->getRow();
+            $db->query("INSERT INTO `{$table}` (`prefix`,`sequence_year`,`last_number`) VALUES (?,?,?) ON DUPLICATE KEY UPDATE `last_number`=`last_number`", [$normalizedPrefix, $year, (int) ($seed->seed ?? 0)]);
+        }
+
         $row = $db->query("SELECT `last_number` FROM `{$table}` WHERE `prefix`=? AND `sequence_year`=? FOR UPDATE", [$normalizedPrefix, $year])->getRow();
         $next = ((int) $row->last_number) + 1;
         $db->table($table)->where(['prefix' => $normalizedPrefix, 'sequence_year' => $year])->update(['last_number' => $next]);

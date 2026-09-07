@@ -40,21 +40,55 @@ class Operations extends Security_Controller
             'returned' => $this->visibleRequests(clone $base)->where('status', 'returned')->countAllResults(),
             'my_pending' => $this->db->table($this->p . 'oa_assignments')->where(['user_id' => $userId, 'status' => 'pending'])->countAllResults()
         ];
-        $data['recent'] = $this->visibleRequests($this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where('r.deleted', 0))->orderBy('r.created_at', 'DESC')->get(10)->getResult();
+        // The KPI cards weren't clickable at all before - link each one to
+        // the list it's actually counting. "Total"/status ones go wherever
+        // the KPI count itself is scoped (requests() if the user can see
+        // everyone's, my_requests() otherwise), with a status filter that
+        // matches the KPI; "Pending my approval" goes to the dedicated
+        // approvals inbox.
+        $listUri = $this->permissions->allowed('operations_view_all_requests', $this->login_user) ? 'operations/requests' : 'operations/my_requests';
+        $data['kpiLinks'] = [
+            'total' => get_uri($listUri),
+            'pending' => get_uri($listUri) . '?status=submitted,pending_approval,information_requested',
+            'approved' => get_uri($listUri) . '?status=approved,completed',
+            'rejected' => get_uri($listUri) . '?status=rejected',
+            'returned' => get_uri($listUri) . '?status=returned',
+            'my_pending' => get_uri('operations/pending'),
+        ];
+        // visibleRequests() used to only ever show requests the user created
+        // themselves (or everyone's, with operations_view_all_requests) - an
+        // approver assigned to review someone else's request, without that
+        // broad permission, never saw it in "Recent requests" at all even
+        // though "Pending my approval" already counted it correctly. Now
+        // included here too.
+        $data['recent'] = $this->visibleRequests($this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where('r.deleted', 0), 'r.id', 'r.requester_id')->orderBy('r.created_at', 'DESC')->get(10)->getResult();
         return $this->template->rander('operations_approval\Views\operations\dashboard', $data);
     }
 
     public function my_requests()
     {
-        $rows = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['r.requester_id' => $this->login_user->id, 'r.deleted' => 0])->orderBy('r.created_at', 'DESC')->get()->getResult();
+        $builder = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['r.requester_id' => $this->login_user->id, 'r.deleted' => 0]);
+        $this->applyStatusFilter($builder, 'r.status');
+        $rows = $builder->orderBy('r.created_at', 'DESC')->get()->getResult();
         return $this->template->rander('operations_approval\Views\operations\request_list', ['rows' => $rows, 'title' => app_lang('operations_my_requests')]);
     }
 
     public function requests()
     {
         $this->requirePermission('operations_view_all_requests');
-        $rows = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where('r.deleted', 0)->orderBy('r.created_at', 'DESC')->get()->getResult();
+        $builder = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where('r.deleted', 0);
+        $this->applyStatusFilter($builder, 'r.status');
+        $rows = $builder->orderBy('r.created_at', 'DESC')->get()->getResult();
         return $this->template->rander('operations_approval\Views\operations\request_list', ['rows' => $rows, 'title' => app_lang('operations_requests')]);
+    }
+
+    // Powers the KPI cards' links on the dashboard (?status=a,b,c).
+    private function applyStatusFilter($builder, string $column): void
+    {
+        $status = trim((string) $this->request->getGet('status'));
+        if ($status === '') return;
+        $statuses = array_values(array_filter(array_map('trim', explode(',', $status))));
+        if ($statuses) $builder->whereIn($column, $statuses);
     }
 
     public function pending()
@@ -490,9 +524,15 @@ class Operations extends Security_Controller
         return $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->get()->getRow();
     }
 
-    private function visibleRequests($builder)
+    private function visibleRequests($builder, string $idColumn = 'id', string $requesterColumn = 'requester_id')
     {
-        if (!$this->permissions->allowed('operations_view_all_requests', $this->login_user)) $builder->where('requester_id', $this->login_user->id);
+        if (!$this->permissions->allowed('operations_view_all_requests', $this->login_user)) {
+            $userId = (int) $this->login_user->id;
+            $builder->groupStart()
+                ->where($requesterColumn, $userId)
+                ->orWhere("$idColumn IN (SELECT i.request_id FROM {$this->p}oa_stage_instances i JOIN {$this->p}oa_assignments a ON a.stage_instance_id=i.id WHERE a.user_id=$userId AND a.status='pending')", null, false)
+                ->groupEnd();
+        }
         return $builder;
     }
 

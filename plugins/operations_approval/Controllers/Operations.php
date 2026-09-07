@@ -189,6 +189,7 @@ class Operations extends Security_Controller
         $data['active_stage'] = $request->current_stage_instance_id ? $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->current_stage_instance_id)->get()->getRow() : null;
         $data['staff'] = $this->db->table($this->p . 'users')->select("id,CONCAT(first_name,' ',last_name) name")->where(['user_type'=>'staff','status'=>'active','deleted'=>0])->where('id !=',$this->login_user->id)->orderBy('first_name')->get()->getResult();
         $data['can_delete'] = $this->canDelete($request);
+        $data['can_retry_configuration'] = $this->permissions->allowed('operations_manage_workflows', $this->login_user);
         return $this->template->rander('operations_approval\Views\operations\view', $data);
     }
 
@@ -387,6 +388,15 @@ class Operations extends Security_Controller
         $path = rtrim($attachment->storage_path, '/\\') . DIRECTORY_SEPARATOR . $attachment->storage_name;
         if (!is_file($path) || !hash_equals($attachment->sha256, hash_file('sha256', $path))) show_404();
         return $this->response->download($path, null)->setFileName($attachment->original_name);
+    }
+
+    public function retryConfiguration(int $id)
+    {
+        $this->requirePermission('operations_manage_workflows');
+        try {
+            (new Workflow_engine())->retryConfiguration($id, $this->login_user);
+            echo json_encode(['success' => true, 'message' => app_lang('operations_configuration_retry'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+        } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
     }
 
     public function export()

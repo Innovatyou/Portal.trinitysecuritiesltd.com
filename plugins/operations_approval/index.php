@@ -107,6 +107,7 @@ $routes->post('operations/respond_information/(:num)', '\operations_approval\Con
 $routes->post('operations/resubmit/(:num)', '\operations_approval\Controllers\Operations::resubmit/$1', ['filter' => 'csrf']);
 $routes->post('operations/cancel/(:num)', '\operations_approval\Controllers\Operations::cancel/$1', ['filter' => 'csrf']);
 $routes->post('operations/delete/(:num)', '\operations_approval\Controllers\Operations::delete/$1', ['filter' => 'csrf']);
+$routes->post('operations/retry_configuration/(:num)', '\operations_approval\Controllers\Operations::retryConfiguration/$1', ['filter' => 'csrf']);
 $routes->post('operations/delegate/(:num)', '\operations_approval\Controllers\Operations::delegate/$1', ['filter' => 'csrf']);
 $routes->post('operations/upload/(:num)', '\operations_approval\Controllers\Operations::upload/$1', ['filter' => 'csrf']);
 $routes->get('operations/download/(:num)', '\operations_approval\Controllers\Operations::download/$1');
@@ -121,6 +122,7 @@ $routes->get('operations_workflows/edit/(:num)', '\operations_approval\Controlle
 $routes->post('operations_workflows/save', '\operations_approval\Controllers\Operations_workflows::save', ['filter' => 'csrf']);
 $routes->post('operations_workflows/publish/(:num)', '\operations_approval\Controllers\Operations_workflows::publish/$1', ['filter' => 'csrf']);
 $routes->post('operations_workflows/toggle-status/(:num)', '\operations_approval\Controllers\Operations_workflows::toggle_status/$1', ['filter' => 'csrf']);
+$routes->post('operations_workflows/delete/(:num)', '\operations_approval\Controllers\Operations_workflows::delete/$1', ['filter' => 'csrf']);
 $routes->get('operations_settings', '\operations_approval\Controllers\Operations_settings::index');
 $routes->post('operations_settings/save', '\operations_approval\Controllers\Operations_settings::save', ['filter' => 'csrf']);
 $routes->post('operations_settings/save_department', '\operations_approval\Controllers\Operations_settings::save_department', ['filter' => 'csrf']);

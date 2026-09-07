@@ -114,6 +114,24 @@ class Operations_workflows extends Security_Controller
         ]);
     }
 
+    // A soft-deleted workflow simply drops off this list and out of the
+    // "new request" picker (both already filter deleted=0) - it never
+    // removes rows or breaks joins for requests already created against
+    // it (Workflow_engine and every request query look the workflow up
+    // by id with no deleted filter). The one thing it WOULD break is an
+    // admin's ability to reach operations_workflows/edit to fix the
+    // stage setup behind a stuck request, so block deletion while any
+    // request against this workflow is still in flight.
+    public function delete(int $id)
+    {
+        $workflow = $this->db->table($this->p . 'oa_workflows')->where(['id' => $id, 'deleted' => 0])->get()->getRow();
+        if (!$workflow) return $this->jsonError(app_lang('record_not_found'));
+        $inFlight = $this->db->table($this->p . 'oa_requests')->where(['workflow_id' => $id, 'deleted' => 0])->whereIn('status', ['draft', 'submitted', 'pending_approval', 'returned', 'information_requested', 'configuration_error'])->countAllResults();
+        if ($inFlight) return $this->jsonError(app_lang('operations_workflow_has_active_requests'));
+        $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['deleted' => 1, 'updated_at' => get_current_utc_time()]);
+        echo json_encode(['success' => true, 'message' => app_lang('operations_workflow_deleted'), 'redirect_to' => get_uri('operations_workflows')]);
+    }
+
     private function validateDefinition($definition): array
     {
         if (!is_array($definition)) return [app_lang('operations_invalid_definition_json')];

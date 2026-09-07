@@ -100,6 +100,37 @@ class Workflow_engine
         }
     }
 
+    // A stage that resolves to zero eligible approvers (no manager/department
+    // head assigned, an empty group, self-approval filtered the only
+    // candidate out, etc.) deliberately parks the request in
+    // configuration_error rather than silently skipping or auto-approving
+    // it (see ADMIN_GUIDE.md). Once whoever manages workflows fixes the
+    // underlying setup (assigns a department head, adds a group member...),
+    // this re-opens that same stuck stage and tries resolution again -
+    // otherwise the only way out was a direct database edit.
+    public function retryConfiguration(int $requestId, object $actor): void
+    {
+        $this->db->transBegin();
+        try {
+            $request = $this->lockRequest($requestId);
+            if ($request->status !== 'configuration_error' || !$request->current_stage_instance_id) {
+                throw new \DomainException('This request is not stuck on a configuration error.');
+            }
+            $stage = $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->current_stage_instance_id)->get()->getRow();
+            if (!$stage) throw new \DomainException('The stuck stage could not be found.');
+            $this->db->table($this->p . 'oa_stage_instances')->where('id', $stage->id)->update(['status' => 'pending', 'condition_result_json' => null]);
+            $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'pending_approval', 'current_stage_instance_id' => null]);
+            $request->status = 'pending_approval';
+            $this->activateNext($request, $actor, ((int) $stage->position) - 1);
+            $this->audit->record('configuration_retry', $requestId, (int) $stage->id, $actor);
+            $this->db->transCommit();
+            $this->notifyActiveApprovers($requestId, $actor);
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+    }
+
     public function resubmit(int $requestId, object $actor): void
     {
         $this->db->transBegin();

@@ -27,12 +27,18 @@ class Workflow_engine
             if (!$workflow || $workflow->status !== 'active' || !$workflow->current_version_id) {
                 throw new \DomainException('The selected workflow is not published and active.');
             }
-            $number = $request->request_no ?: (new Request_number_service())->next((int) $workflow->id, $workflow->prefix);
+            $number = $request->request_no ?: (new Request_number_service())->next($workflow->prefix);
             $now = get_current_utc_time();
-            $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update([
+            // DBDebug is off in production, so a failed UPDATE (e.g. a
+            // request_no collision that somehow still occurs) returns
+            // false instead of throwing - check explicitly rather than
+            // silently letting the request advance to "submitted" with no
+            // request_no, which is exactly how that bug used to surface.
+            $updated = $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update([
                 'request_no' => $number, 'version_id' => $workflow->current_version_id, 'status' => 'submitted',
                 'submitted_at' => $now, 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1
             ]);
+            if (!$updated) throw new \RuntimeException('Could not assign a request number. Please try again.');
             $request->version_id = $workflow->current_version_id;
             $request->request_no = $number;
             $this->snapshotStages($request);

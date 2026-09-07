@@ -4,27 +4,28 @@ namespace operations_approval\Libraries;
 
 class Request_number_service
 {
-    // Callers (Workflow_engine::submit()) always run this inside their own
-    // already-open transaction. This used to wrap itself in a *second*
-    // transBegin()/transCommit() - harmless in the common case (CI4 just
-    // tracks nesting depth), but if this INSERT/SELECT FOR UPDATE/UPDATE
-    // sequence ever threw partway through, its own transRollback() could
-    // roll back the outer transaction's earlier work too (the request's
-    // status update happens in the same outer transaction, right after this
-    // returns) while the caller's catch block still believes only its own
-    // work needs rolling back - a real, if rare, way to end up with a
-    // request that has genuinely moved status but never got a request_no.
-    // Just participate in whatever transaction is already open.
-    public function next(int $workflowId, string $prefix): string
+    // request_no is globally unique across every workflow (oa_requests has
+    // a single UNIQUE KEY on it), but the counter used to be scoped per
+    // workflow_id (oa_sequences). Two different workflows sharing the same
+    // prefix - e.g. both left on the "REQ" default - would each hand out
+    // "REQ-2026-000001" independently, and the second one to actually
+    // reach oa_requests would hit that unique-key collision. Since
+    // DBDebug is off in production, that failed UPDATE just returned
+    // false silently (see Workflow_engine::submit()) instead of throwing,
+    // so the request's status still advanced while request_no stayed
+    // empty. Keying the counter by the prefix itself instead - everyone
+    // who shares "REQ" shares one counter - makes a collision structurally
+    // impossible rather than merely unlikely.
+    public function next(string $prefix): string
     {
+        $normalizedPrefix = strtoupper(preg_replace('/[^A-Z0-9_-]/i', '', $prefix ?: 'REQ'));
         $db = db_connect('default');
-        $table = $db->getPrefix() . 'oa_sequences';
+        $table = $db->getPrefix() . 'oa_prefix_sequences';
         $year = (int) date('Y');
-        $db->query("INSERT INTO `{$table}` (`workflow_id`,`sequence_year`,`last_number`) VALUES (?,?,0) ON DUPLICATE KEY UPDATE `last_number`=`last_number`", [$workflowId, $year]);
-        $row = $db->query("SELECT `last_number` FROM `{$table}` WHERE `workflow_id`=? AND `sequence_year`=? FOR UPDATE", [$workflowId, $year])->getRow();
+        $db->query("INSERT INTO `{$table}` (`prefix`,`sequence_year`,`last_number`) VALUES (?,?,0) ON DUPLICATE KEY UPDATE `last_number`=`last_number`", [$normalizedPrefix, $year]);
+        $row = $db->query("SELECT `last_number` FROM `{$table}` WHERE `prefix`=? AND `sequence_year`=? FOR UPDATE", [$normalizedPrefix, $year])->getRow();
         $next = ((int) $row->last_number) + 1;
-        $db->table($table)->where(['workflow_id' => $workflowId, 'sequence_year' => $year])->update(['last_number' => $next]);
-        return strtoupper(preg_replace('/[^A-Z0-9_-]/i', '', $prefix ?: 'REQ')) . '-' . $year . '-' . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
+        $db->table($table)->where(['prefix' => $normalizedPrefix, 'sequence_year' => $year])->update(['last_number' => $next]);
+        return $normalizedPrefix . '-' . $year . '-' . str_pad((string) $next, 6, '0', STR_PAD_LEFT);
     }
 }
-

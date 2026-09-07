@@ -85,6 +85,7 @@ $lang['operations_retry_configuration'] = 'Retry now';
 $lang['operations_configuration_retry'] = 'Retried - the stage will re-attempt to resolve approvers.';
 $lang['operations_workflow_deleted'] = 'The workflow type has been deleted.';
 $lang['operations_workflow_has_active_requests'] = 'This workflow type has requests still in progress (%s). Wait for them to finish or be cancelled, or disable the workflow instead of deleting it.';
+$lang['operations_duplicate_workflow_code'] = 'This code is already used by another workflow type. Choose a different code.';
 $lang['operations_workflow_published'] = 'The immutable workflow version has been published.';
 $lang['operations_settings'] = 'Operations settings';
 $lang['workflow_settings'] = 'WorkFlow settings';

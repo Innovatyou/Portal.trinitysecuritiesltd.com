@@ -44,6 +44,16 @@ class Operations_workflows extends Security_Controller
     {
         $this->validate_submitted_data(['id' => 'permit_empty|numeric', 'name' => 'required|max_length[150]', 'code' => 'required|max_length[50]', 'prefix' => 'required|max_length[20]', 'definition_json' => 'required']);
         $id = (int) $this->request->getPost('id');
+        $code = strtoupper(clean_data($this->request->getPost('code')));
+        // code is globally unique at the DB level, including soft-deleted
+        // rows (delete() frees its code by renaming it). DBDebug is off in
+        // production, so letting a duplicate reach the INSERT/UPDATE would
+        // fail silently (returns false, no exception) and this would
+        // still report "success" while never having written the row -
+        // check up front instead.
+        if ($this->db->table($this->p . 'oa_workflows')->where('code', $code)->where('id !=', $id)->countAllResults()) {
+            return $this->jsonError(app_lang('operations_duplicate_workflow_code'));
+        }
         $definition = json_decode((string) $this->request->getPost('definition_json'), true);
         $errors = $this->validateDefinition($definition);
         if ($errors) return $this->jsonError(implode(' ', $errors));
@@ -51,19 +61,20 @@ class Operations_workflows extends Security_Controller
         $workflowSettings = [];
         foreach (['allow_attachments','require_attachments','allow_requester_comments','allow_approver_attachments','allow_return','allow_cancellation','allow_resubmission','allow_delegation'] as $option) $workflowSettings[$option] = $this->request->getPost($option) ? true : false;
         $workflowSettings['completion_behavior'] = clean_data($this->request->getPost('completion_behavior') ?: 'completed');
-        $workflowData = ['name' => clean_data($this->request->getPost('name')), 'code' => strtoupper(clean_data($this->request->getPost('code'))), 'prefix' => strtoupper(clean_data($this->request->getPost('prefix'))), 'description' => clean_data($this->request->getPost('description')), 'settings_json' => json_encode($workflowSettings), 'updated_at' => $now];
+        $workflowData = ['name' => clean_data($this->request->getPost('name')), 'code' => $code, 'prefix' => strtoupper(clean_data($this->request->getPost('prefix'))), 'description' => clean_data($this->request->getPost('description')), 'settings_json' => json_encode($workflowSettings), 'updated_at' => $now];
         $this->db->transBegin();
         try {
-            if ($id) $this->db->table($this->p . 'oa_workflows')->where(['id' => $id, 'deleted' => 0])->update($workflowData);
-            else {
+            if ($id) {
+                if (!$this->db->table($this->p . 'oa_workflows')->where(['id' => $id, 'deleted' => 0])->update($workflowData)) throw new \RuntimeException('Failed to update the workflow record.');
+            } else {
                 $workflowData += ['status' => 'draft', 'created_by' => $this->login_user->id, 'created_at' => $now];
-                $this->db->table($this->p . 'oa_workflows')->insert($workflowData);
+                if (!$this->db->table($this->p . 'oa_workflows')->insert($workflowData)) throw new \RuntimeException('Failed to create the workflow record.');
                 $id = (int) $this->db->insertID();
             }
             $last = $this->db->table($this->p . 'oa_workflow_versions')->selectMax('version_no', 'max_version')->where('workflow_id', $id)->get()->getRow();
             $versionNo = ((int) ($last->max_version ?? 0)) + 1;
             $json = json_encode($definition, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $this->db->table($this->p . 'oa_workflow_versions')->insert(['workflow_id' => $id, 'version_no' => $versionNo, 'definition_json' => $json, 'definition_hash' => hash('sha256', $json), 'status' => 'draft', 'created_by' => $this->login_user->id, 'created_at' => $now]);
+            if (!$this->db->table($this->p . 'oa_workflow_versions')->insert(['workflow_id' => $id, 'version_no' => $versionNo, 'definition_json' => $json, 'definition_hash' => hash('sha256', $json), 'status' => 'draft', 'created_by' => $this->login_user->id, 'created_at' => $now])) throw new \RuntimeException('Failed to save the workflow version.');
             $this->db->transCommit();
             echo json_encode(['success' => true, 'message' => app_lang('record_saved'), 'redirect_to' => get_uri('operations_workflows/edit/' . $id)]);
         } catch (\Throwable $e) {
@@ -132,7 +143,16 @@ class Operations_workflows extends Security_Controller
             if (count($blocking) > 5) $labels[] = '+' . (count($blocking) - 5) . ' more';
             return $this->jsonError(sprintf(app_lang('operations_workflow_has_active_requests'), implode(', ', $labels)));
         }
-        $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['deleted' => 1, 'updated_at' => get_current_utc_time()]);
+        // code stays unique at the DB level even for deleted=1 rows (the
+        // index has no deleted component), so free it up here rather than
+        // leaving a deleted workflow permanently blocking reuse of its
+        // code. code is VARCHAR(50); truncate before appending the suffix
+        // so this never overflows the column.
+        $suffix = '_del' . $id;
+        $freedCode = substr($workflow->code, 0, 50 - strlen($suffix)) . $suffix;
+        if (!$this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['deleted' => 1, 'code' => $freedCode, 'updated_at' => get_current_utc_time()])) {
+            return $this->jsonError(app_lang('error_occurred'));
+        }
         echo json_encode(['success' => true, 'message' => app_lang('operations_workflow_deleted'), 'redirect_to' => get_uri('operations_workflows')]);
     }
 

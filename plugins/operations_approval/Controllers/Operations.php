@@ -455,9 +455,11 @@ class Operations extends Security_Controller
     public function retryConfiguration(int $id)
     {
         $this->requirePermission('operations_manage_workflows');
+        $manualApproverIds = array_map('intval', (array) $this->request->getPost('manual_approver_ids'));
         try {
-            (new Workflow_engine())->retryConfiguration($id, $this->login_user);
-            echo json_encode(['success' => true, 'message' => app_lang('operations_configuration_retry'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+            (new Workflow_engine())->retryConfiguration($id, $this->login_user, $manualApproverIds);
+            $message = $manualApproverIds ? app_lang('operations_manual_assignment_done') : app_lang('operations_configuration_retry');
+            echo json_encode(['success' => true, 'message' => $message, 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
     }
 

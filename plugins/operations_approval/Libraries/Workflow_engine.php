@@ -132,7 +132,18 @@ class Workflow_engine
     // underlying setup (assigns a department head, adds a group member...),
     // this re-opens that same stuck stage and tries resolution again -
     // otherwise the only way out was a direct database edit.
-    public function retryConfiguration(int $requestId, object $actor): void
+    // Re-resolving from the stage's own (immutable, version-locked)
+    // approver_config_json only helps when the surrounding DATA has
+    // changed since - a manager got assigned, a group gained a member, a
+    // department head got set. It can never help when the config itself
+    // is simply wrong, most commonly a "specific people" stage whose
+    // frozen user list turns out to BE the requester and gets filtered
+    // out by allow_self_approval - re-running the exact same resolution
+    // just fails the exact same way forever. $manualApproverIds lets an
+    // admin hand this one stuck stage directly to specific people
+    // instead, without needing to touch the (possibly shared, published)
+    // stage definition at all.
+    public function retryConfiguration(int $requestId, object $actor, array $manualApproverIds = []): void
     {
         $this->db->transBegin();
         try {
@@ -142,11 +153,31 @@ class Workflow_engine
             }
             $stage = $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->current_stage_instance_id)->get()->getRow();
             if (!$stage) throw new \DomainException('The stuck stage could not be found.');
-            $this->db->table($this->p . 'oa_stage_instances')->where('id', $stage->id)->update(['status' => 'pending', 'condition_result_json' => null]);
-            $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'pending_approval', 'current_stage_instance_id' => null]);
+            $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'pending_approval']);
             $request->status = 'pending_approval';
-            $this->activateNext($request, $actor, ((int) $stage->position) - 1);
-            $this->audit->record('configuration_retry', $requestId, (int) $stage->id, $actor);
+            $manualApproverIds = array_values(array_unique(array_filter(array_map('intval', $manualApproverIds))));
+            if ($manualApproverIds) {
+                $now = get_current_utc_time();
+                $this->db->table($this->p . 'oa_stage_instances')->where('id', $stage->id)->update(['status' => 'active', 'activated_at' => $now, 'condition_result_json' => null]);
+                foreach ($manualApproverIds as $userId) {
+                    // (stage_instance_id,user_id) is unique - a retry that
+                    // re-picks someone already handed this stage (e.g. a
+                    // second manual retry with an overlapping selection)
+                    // would otherwise hit that and (DBDebug is off) fail
+                    // silently; skip rather than re-insert.
+                    $already = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stage->id, 'user_id' => $userId])->countAllResults();
+                    if (!$already) {
+                        $this->db->table($this->p . 'oa_assignments')->insert(['stage_instance_id' => $stage->id, 'user_id' => $userId, 'source_snapshot' => 'manual_override', 'status' => 'pending', 'assigned_at' => $now]);
+                    }
+                }
+                $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['current_stage_instance_id' => $stage->id, 'updated_at' => $now]);
+                $this->audit->record('configuration_retry_manual', $requestId, (int) $stage->id, $actor, [], ['approver_ids' => $manualApproverIds]);
+            } else {
+                $this->db->table($this->p . 'oa_stage_instances')->where('id', $stage->id)->update(['status' => 'pending', 'condition_result_json' => null]);
+                $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['current_stage_instance_id' => null]);
+                $this->activateNext($request, $actor, ((int) $stage->position) - 1);
+                $this->audit->record('configuration_retry', $requestId, (int) $stage->id, $actor);
+            }
             $this->db->transCommit();
             $this->notifyActiveApprovers($requestId, $actor);
         } catch (\Throwable $e) {

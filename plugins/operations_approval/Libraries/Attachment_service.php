@@ -46,6 +46,11 @@ class Attachment_service
         return $this->db->table($this->p . 'oa_attachments')->where(['id' => $id, 'deleted_at' => null])->get()->getRow();
     }
 
+    public function allowedExtensions(): array
+    {
+        return $this->settings()['extensions'];
+    }
+
     private function settings(): array
     {
         $rows = $this->db->table($this->p . 'oa_settings')->whereIn('setting_key', ['allowed_extensions', 'max_file_size_mb'])->get()->getResult();

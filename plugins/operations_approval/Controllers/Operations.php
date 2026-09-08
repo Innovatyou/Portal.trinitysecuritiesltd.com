@@ -347,6 +347,28 @@ class Operations extends Security_Controller
         } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
     }
 
+    // Dropzone (multi_file_uploader.php) calls this before a file ever
+    // leaves the browser. It defaults to the CORE, system-wide
+    // "Accepted file format" setting (Settings > General), which is
+    // separate from this plugin's own "Allowed file extensions" setting
+    // and easy to drift out of sync with it - confirmed live: xlsx and
+    // then xls were both already allowed in the plugin's own list but
+    // missing from the core one, rejecting the upload before it ever
+    // reached Attachment_service::store()'s own (correct) check. Point
+    // operations uploads at this instead so the plugin's own
+    // admin-configurable list is the only thing that matters here.
+    public function validateUpload()
+    {
+        $fileName = (string) $this->request->getPost('file_name');
+        $extension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
+        $disallowed = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'inc'];
+        if ($fileName && !in_array($extension, $disallowed, true) && in_array($extension, (new Attachment_service())->allowedExtensions(), true)) {
+            echo json_encode(['success' => true]);
+        } else {
+            echo json_encode(['success' => false, 'message' => app_lang('invalid_file_type') . " ($fileName)"]);
+        }
+    }
+
     public function upload(int $id)
     {
         $request = $this->getRequest($id);

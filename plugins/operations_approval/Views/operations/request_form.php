@@ -32,7 +32,7 @@ else echo form_input(['id' => 'field-' . $field->field_key, 'name' => 'field_' .
     <button type="button" id="oa-add-custom-field" class="btn btn-outline-secondary btn-sm"><i data-feather="plus" class="icon-14"></i> <?php echo app_lang('operations_add_custom_field'); ?></button>
     <div><small class="text-muted"><?php echo app_lang('operations_custom_fields_help'); ?></small></div>
 </div>
-<div class="form-group"><label><?php echo app_lang('attachments'); ?></label><input type="hidden" name="context" value="request"><?php echo view('includes/multi_file_uploader', ['hide_description' => true, 'max_files' => 10]); ?></div>
+<div class="form-group"><label><?php echo app_lang('attachments'); ?></label><input type="hidden" name="context" value="request"><?php echo view('includes/multi_file_uploader', ['hide_description' => true, 'max_files' => 10, 'validation_url' => get_uri('operations/validate_upload')]); ?></div>
 <button type="submit" name="save_draft" value="1" class="btn btn-default mr10"><?php echo app_lang('operations_save_as_draft'); ?></button><button type="submit" name="submit_request" value="1" class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button>
 <?php echo form_close(); ?>
 <script>$(document).ready(function(){

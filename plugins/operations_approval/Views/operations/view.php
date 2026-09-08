@@ -7,7 +7,9 @@
 <?php } elseif (($value->field_type ?? '') === 'spreadsheet') { $grid = json_decode($value->value_text ?: $value->value_json ?: '[]', true) ?: []; ?>
 <div class="table-responsive"><table class="table table-bordered table-sm mb-0"><tbody><?php foreach ($grid as $row) { ?><tr><?php foreach ((array) $row as $cell) { ?><td><?php echo esc((string) $cell); ?></td><?php } ?></tr><?php } ?></tbody></table></div>
 <?php } else { ?><?php echo nl2br(esc($value->value_text ?: $value->value_json)); ?><?php } ?>
-</div></div><?php } ?></div></div>
+</div></div><?php } ?>
+<?php foreach ($customFields as $cf) { ?><div class="mb-3"><strong><?php echo esc($cf->label); ?></strong><div><?php echo nl2br(esc($cf->value)); ?></div></div><?php } ?>
+</div></div>
 <?php if($request->status==='draft' && (int)$request->requester_id===(int)$login_user->id){ ?><div class="card"><div class="card-body"><?php echo form_open(get_uri('operations/submit/'.$request->id),['id'=>'operations-submit-form','class'=>'general-form']); ?><button class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button><?php echo form_close(); ?></div></div><?php } ?>
 <div class="card"><div class="card-header"><h4><?php echo app_lang('operations_approval_timeline'); ?></h4></div><div class="card-body"><div class="vertical-timeline">
 <?php foreach ($timeline as $item) { ?><div class="mb-4 border-start ps-3"><strong><?php echo esc($item->name_snapshot); ?></strong> <span class="badge bg-<?php echo $item->status === 'approved' ? 'success' : ($item->status === 'skipped' ? 'secondary' : 'warning'); ?>"><?php echo esc(ucwords($item->status)); ?></span><?php if ($item->actor_name_snapshot) { ?><div><?php echo esc($item->actor_name_snapshot); ?> — <?php echo format_to_datetime($item->decision_at); ?></div><div><?php echo nl2br(esc($item->comment)); ?></div><?php } ?></div><?php } ?>

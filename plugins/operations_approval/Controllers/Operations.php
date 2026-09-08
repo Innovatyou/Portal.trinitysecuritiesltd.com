@@ -6,6 +6,7 @@ use App\Controllers\Security_Controller;
 use operations_approval\Libraries\Audit_service;
 use operations_approval\Libraries\Access_service;
 use operations_approval\Libraries\Attachment_service;
+use operations_approval\Libraries\Custom_field_service;
 use operations_approval\Libraries\Delegation_service;
 use operations_approval\Libraries\Notification_service;
 use operations_approval\Libraries\Report_service;
@@ -131,6 +132,12 @@ class Operations extends Security_Controller
             for ($fileIndex = 1; ($fileName = $this->request->getPost('file_name_' . $fileIndex)) !== null; $fileIndex++) {
                 if ($fileName) (new Attachment_service())->store($id, (int) $this->login_user->id, basename((string) $fileName), null, 'request');
             }
+            // Ad-hoc extras the requester adds themselves, on top of the
+            // workflow's own defined fields - unstructured on purpose,
+            // so no is_required/validation rules apply to these.
+            $customLabels = (array) $this->request->getPost('custom_field_label');
+            $customValues = (array) $this->request->getPost('custom_field_value');
+            if ($customLabels) (new Custom_field_service())->storeMany($id, $customLabels, $customValues, (int) $this->login_user->id);
             (new Audit_service())->record('request_created', $id, null, $this->login_user);
             if ($this->request->getPost('submit_request')) (new Workflow_engine())->submit($id, $this->login_user);
             $this->db->transCommit();
@@ -179,6 +186,7 @@ class Operations extends Security_Controller
         if (!$this->canView($request)) app_redirect('forbidden');
         $data['request'] = $request;
         $data['values'] = $this->db->table($this->p . 'oa_request_values rv')->select('rv.*, f.field_type')->join($this->p . 'oa_fields f', 'f.id=rv.field_id', 'left')->where(['rv.request_id' => $id, 'rv.revision_no' => $request->revision_no])->get()->getResult();
+        $data['customFields'] = (new Custom_field_service())->list($id);
         $data['timeline'] = $this->db->table($this->p . 'oa_stage_instances i')->select('i.*, d.decision, d.comment, d.actor_name_snapshot, d.created_at decision_at')->join($this->p . 'oa_decisions d', 'd.stage_instance_id=i.id', 'left')->where('i.request_id', $id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResult();
         $data['comments'] = $this->db->table($this->p . 'oa_comments')->where('request_id', $id)->orderBy('created_at')->get()->getResult();
         $data['attachments'] = $this->db->table($this->p . 'oa_attachments')->where(['request_id' => $id, 'deleted_at' => null])->orderBy('created_at')->get()->getResult();

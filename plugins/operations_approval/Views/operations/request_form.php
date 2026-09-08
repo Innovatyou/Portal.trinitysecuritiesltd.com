@@ -26,7 +26,32 @@ elseif ($field->field_type === 'richtext') {
 } elseif (in_array($field->field_type, ['dropdown','radio'], true)) echo form_dropdown('field_' . $field->field_key, array_combine($config['options'] ?? [], $config['options'] ?? []), '', "id='field-{$field->field_key}' class='form-control'" . ($field->is_required ? ' required' : ''));
 else echo form_input(['id' => 'field-' . $field->field_key, 'name' => 'field_' . $field->field_key, 'type' => in_array($field->field_type, ['date','email','number','url'], true) ? $field->field_type : 'text', 'class' => 'form-control', 'required' => (bool) $field->is_required]); ?>
 <?php if (!empty($config['help'])) { ?><small class="text-muted"><?php echo esc($config['help']); ?></small><?php } ?></div><?php } ?>
+<div class="form-group">
+    <label><?php echo app_lang('operations_custom_fields'); ?> <small class="text-muted">(<?php echo app_lang('operations_optional'); ?>)</small></label>
+    <div id="oa-custom-fields-container"></div>
+    <button type="button" id="oa-add-custom-field" class="btn btn-outline-secondary btn-sm"><i data-feather="plus" class="icon-14"></i> <?php echo app_lang('operations_add_custom_field'); ?></button>
+    <div><small class="text-muted"><?php echo app_lang('operations_custom_fields_help'); ?></small></div>
+</div>
 <div class="form-group"><label><?php echo app_lang('attachments'); ?></label><input type="hidden" name="context" value="request"><?php echo view('includes/multi_file_uploader', ['hide_description' => true, 'max_files' => 10]); ?></div>
 <button type="submit" name="save_draft" value="1" class="btn btn-default mr10"><?php echo app_lang('operations_save_as_draft'); ?></button><button type="submit" name="submit_request" value="1" class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button>
 <?php echo form_close(); ?>
-<script>$(document).ready(function(){ $('#operations-create-form').appForm({isModal:false, onSuccess: oaFormFeedback}); if(window.initOnDemandWYSIWYGEditor){$('.oa-richtext-field').each(function(){initOnDemandWYSIWYGEditor($(this));});} if(window.feather){feather.replace();} });</script>
+<script>$(document).ready(function(){
+    $('#operations-create-form').appForm({isModal:false, onSuccess: oaFormFeedback});
+    if(window.initOnDemandWYSIWYGEditor){$('.oa-richtext-field').each(function(){initOnDemandWYSIWYGEditor($(this));});}
+    if(window.feather){feather.replace();}
+    // Requester-added extras, separate from the workflow's own fields
+    // above - free label/value pairs, capped at 20 server-side
+    // (Custom_field_service::storeMany). Bound directly on this form's
+    // own elements (not $(document)) since the whole fragment gets
+    // replaced on every workflow-selector change, so there's no risk of
+    // stacking duplicate handlers across reloads.
+    $('#oa-add-custom-field').on('click', function () {
+        var $row = $('<div class="row oa-custom-field-row mb-2"><div class="col-md-4"><input type="text" class="form-control form-control-sm" name="custom_field_label[]" placeholder="<?php echo esc(app_lang('operations_field_name'), 'js'); ?>"></div><div class="col-md-7"><input type="text" class="form-control form-control-sm" name="custom_field_value[]" placeholder="<?php echo esc(app_lang('operations_field_value'), 'js'); ?>"></div><div class="col-md-1"><button type="button" class="btn btn-outline-danger btn-sm oa-custom-field-remove">&times;</button></div></div>');
+        $('#oa-custom-fields-container').append($row);
+        if($('#oa-custom-fields-container .oa-custom-field-row').length >= 20){$('#oa-add-custom-field').prop('disabled', true);}
+    });
+    $('#operations-create-form').on('click', '.oa-custom-field-remove', function () {
+        $(this).closest('.oa-custom-field-row').remove();
+        $('#oa-add-custom-field').prop('disabled', false);
+    });
+});</script>

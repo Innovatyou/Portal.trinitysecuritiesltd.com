@@ -178,7 +178,7 @@ class Operations extends Security_Controller
         $request = $this->getRequest($id);
         if (!$this->canView($request)) app_redirect('forbidden');
         $data['request'] = $request;
-        $data['values'] = $this->db->table($this->p . 'oa_request_values')->where(['request_id' => $id, 'revision_no' => $request->revision_no])->get()->getResult();
+        $data['values'] = $this->db->table($this->p . 'oa_request_values rv')->select('rv.*, f.field_type')->join($this->p . 'oa_fields f', 'f.id=rv.field_id', 'left')->where(['rv.request_id' => $id, 'rv.revision_no' => $request->revision_no])->get()->getResult();
         $data['timeline'] = $this->db->table($this->p . 'oa_stage_instances i')->select('i.*, d.decision, d.comment, d.actor_name_snapshot, d.created_at decision_at')->join($this->p . 'oa_decisions d', 'd.stage_instance_id=i.id', 'left')->where('i.request_id', $id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResult();
         $data['comments'] = $this->db->table($this->p . 'oa_comments')->where('request_id', $id)->orderBy('created_at')->get()->getResult();
         $data['attachments'] = $this->db->table($this->p . 'oa_attachments')->where(['request_id' => $id, 'deleted_at' => null])->orderBy('created_at')->get()->getResult();
@@ -524,7 +524,7 @@ class Operations extends Security_Controller
 
     private function getRequest(int $id): object
     {
-        $row = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name, w.code workflow_code')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['r.id' => $id, 'r.deleted' => 0])->get()->getRow();
+        $row = $this->db->table($this->p . 'oa_requests r')->select("r.*, w.name workflow_name, w.code workflow_code, CONCAT(u.first_name,' ',u.last_name) requester_name")->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->join($this->p . 'users u', 'u.id=r.requester_id', 'left')->where(['r.id' => $id, 'r.deleted' => 0])->get()->getRow();
         if (!$row) show_404();
         return $row;
     }

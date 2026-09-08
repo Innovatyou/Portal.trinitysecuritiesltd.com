@@ -1,6 +1,36 @@
 <script>$(function(){var $title=$('.page-title').last();if($title.length&&!$title.closest('.oa-page').length){$title.add($title.nextAll()).wrapAll('<div class="oa-page"></div>');}if(window.feather){feather.replace();}});</script>
 <script>$(document).on('click','tr[data-href]',function(e){if($(e.target).closest('a,button,input,select,textarea').length)return;window.location=$(this).data('href');});</script>
 <script>window.oaFormFeedback=window.oaFormFeedback||function(result){if(result&&result.message){appAlert.success(result.message,{duration:4000});}if(result&&result.redirect_to){setTimeout(function(){window.location=result.redirect_to;},900);}};</script>
+<script>
+// Delegated (not bound inside request_form.php itself) since that form gets
+// reloaded via .load() every time the workflow selector changes - binding
+// directly there would stack a fresh duplicate handler on every reload.
+(function(){
+    function syncSpreadsheet($box){
+        var rows=[];
+        $box.find('table tbody tr').each(function(){
+            var row=[];
+            $(this).find('.oa-cell').each(function(){row.push($(this).val());});
+            rows.push(row);
+        });
+        $box.find('.oa-spreadsheet-data').val(JSON.stringify(rows));
+    }
+    $(document).on('input','.oa-spreadsheet .oa-cell',function(){syncSpreadsheet($(this).closest('.oa-spreadsheet'));});
+    $(document).on('click','.oa-add-row',function(){
+        var $box=$(this).closest('.oa-spreadsheet');
+        var cols=$box.find('table tbody tr:first .oa-cell').length||1;
+        var $tr=$('<tr>');
+        for(var i=0;i<cols;i++)$tr.append('<td><input type="text" class="form-control form-control-sm oa-cell"></td>');
+        $box.find('table tbody').append($tr);
+        syncSpreadsheet($box);
+    });
+    $(document).on('click','.oa-add-column',function(){
+        var $box=$(this).closest('.oa-spreadsheet');
+        $box.find('table tbody tr').each(function(){$(this).append('<td><input type="text" class="form-control form-control-sm oa-cell"></td>');});
+        syncSpreadsheet($box);
+    });
+})();
+</script>
 <style>
 :root{--oa-navy:#071b35;--oa-lime:#a8e600;--oa-cyan:#2dd4bf;--oa-muted:#64748b;--oa-border:rgba(15,42,76,.09);--oa-shadow:0 18px 45px rgba(7,27,53,.10),0 3px 10px rgba(7,27,53,.05)}
 .oa-page{padding:22px;min-height:calc(100vh - 120px);background:radial-gradient(circle at 5% 0,rgba(168,230,0,.10),transparent 24rem),linear-gradient(145deg,#f7fafc,#eef4f8)}.oa-page *{box-sizing:border-box}.oa-page .page-title{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 0 22px;border:0;background:transparent}.oa-page .page-title h1{margin:0;color:var(--oa-navy);font-size:clamp(24px,3vw,34px);font-weight:800;letter-spacing:-.8px}.oa-page .page-title h1:after{content:"";display:block;width:52px;height:4px;margin-top:10px;border-radius:10px;background:linear-gradient(90deg,var(--oa-lime),var(--oa-cyan))}

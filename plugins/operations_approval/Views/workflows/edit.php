@@ -146,7 +146,7 @@ if ($firstGroupId) {
     </div>
 </div>
 
-<div class="form-group"><label for="oa-definition"><?php echo app_lang('operations_definition_json'); ?></label><textarea id="oa-definition" name="definition_json" class="form-control font-monospace" rows="24" required><?php echo esc($definition); ?></textarea><small class="text-muted"><?php echo app_lang('operations_definition_help'); ?> Fields aren't editable above yet - add/edit the "fields" array here directly; the levels above only manage "stages".</small></div><button class="btn btn-primary"><?php echo app_lang('save'); ?></button><?php echo form_close(); ?></div></div>
+<div class="form-group"><label for="oa-definition"><?php echo app_lang('operations_definition_json'); ?></label><textarea id="oa-definition" name="definition_json" class="form-control font-monospace" rows="24" required><?php echo esc($definition); ?></textarea><small class="text-muted"><?php echo app_lang('operations_definition_help'); ?> Fields aren't editable above yet - add/edit the "fields" array here directly; the levels above only manage "stages". Supported field "type" values: text, textarea, dropdown, radio, date, email, number, url, currency, "richtext" (a Word-style formatted text editor) and "spreadsheet" (a small Excel-style grid) - richtext and spreadsheet let a requester type the content directly instead of preparing and uploading a file.</small></div><button class="btn btn-primary"><?php echo app_lang('save'); ?></button><?php echo form_close(); ?></div></div>
 </div>
 <script>
 var oaExistingStages = <?php $decodedDefinition = json_decode($definition, true) ?: ['stages' => []]; echo json_encode($decodedDefinition['stages'] ?? [], JSON_UNESCAPED_SLASHES); ?>;

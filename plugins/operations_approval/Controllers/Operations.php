@@ -32,6 +32,7 @@ class Operations extends Security_Controller
     public function index()
     {
         $userId = (int) $this->login_user->id;
+        $hasOverride = $this->hasAdminOverride();
         $base = $this->db->table($this->p . 'oa_requests')->where('deleted', 0);
         $data['kpis'] = [
             'total' => $this->visibleRequests(clone $base)->countAllResults(),
@@ -39,7 +40,14 @@ class Operations extends Security_Controller
             'approved' => $this->visibleRequests(clone $base)->whereIn('status', ['approved', 'completed'])->countAllResults(),
             'rejected' => $this->visibleRequests(clone $base)->where('status', 'rejected')->countAllResults(),
             'returned' => $this->visibleRequests(clone $base)->where('status', 'returned')->countAllResults(),
-            'my_pending' => $this->db->table($this->p . 'oa_assignments')->where(['user_id' => $userId, 'status' => 'pending'])->countAllResults()
+            // Matches pending()'s scope below: an admin-override holder's
+            // "Pending my approval" inbox is every request org-wide
+            // waiting on a decision, not just their own assignments (they
+            // have none by default) - the KPI would otherwise read 0 while
+            // the card it links to shows plenty.
+            'my_pending' => $hasOverride
+                ? $this->db->table($this->p . 'oa_requests')->where(['status' => 'pending_approval', 'deleted' => 0])->countAllResults()
+                : $this->db->table($this->p . 'oa_assignments')->where(['user_id' => $userId, 'status' => 'pending'])->countAllResults()
         ];
         // The KPI cards weren't clickable at all before - link each one to
         // the list it's actually counting. "Total"/status ones go wherever
@@ -47,7 +55,7 @@ class Operations extends Security_Controller
         // everyone's, my_requests() otherwise), with a status filter that
         // matches the KPI; "Pending my approval" goes to the dedicated
         // approvals inbox.
-        $listUri = $this->permissions->allowed('operations_view_all_requests', $this->login_user) ? 'operations/requests' : 'operations/my_requests';
+        $listUri = ($this->permissions->allowed('operations_view_all_requests', $this->login_user) || $hasOverride) ? 'operations/requests' : 'operations/my_requests';
         $data['kpiLinks'] = [
             'total' => get_uri($listUri),
             'pending' => get_uri($listUri) . '?status=submitted,pending_approval,information_requested',
@@ -76,7 +84,7 @@ class Operations extends Security_Controller
 
     public function requests()
     {
-        $this->requirePermission('operations_view_all_requests');
+        if (!$this->permissions->allowed('operations_view_all_requests', $this->login_user) && !$this->hasAdminOverride()) app_redirect('forbidden');
         $builder = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where('r.deleted', 0);
         $this->applyStatusFilter($builder, 'r.status');
         $rows = $builder->orderBy('r.created_at', 'DESC')->get()->getResult();
@@ -94,8 +102,23 @@ class Operations extends Security_Controller
 
     public function pending()
     {
-        $rows = $this->db->table($this->p . 'oa_assignments a')->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_stage_instances i', 'i.id=a.stage_instance_id')->join($this->p . 'oa_requests r', 'r.id=i.request_id')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['a.user_id' => $this->login_user->id, 'a.status' => 'pending'])->orderBy('a.assigned_at')->get()->getResult();
+        // operations_admin_override: rather than an inbox of the user's
+        // own assignments (they hold none by default), show every request
+        // org-wide that's actually waiting on a decision - this is what
+        // makes "approve even when not on the approval list" practically
+        // usable, versus only working when they already have a direct
+        // link to the request.
+        if ($this->hasAdminOverride()) {
+            $rows = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->join($this->p . 'oa_stage_instances i', 'i.id=r.current_stage_instance_id', 'left')->where(['r.status' => 'pending_approval', 'r.deleted' => 0])->orderBy('r.updated_at')->get()->getResult();
+        } else {
+            $rows = $this->db->table($this->p . 'oa_assignments a')->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_stage_instances i', 'i.id=a.stage_instance_id')->join($this->p . 'oa_requests r', 'r.id=i.request_id')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['a.user_id' => $this->login_user->id, 'a.status' => 'pending'])->orderBy('a.assigned_at')->get()->getResult();
+        }
         return $this->template->rander('operations_approval\Views\operations\request_list', ['rows' => $rows, 'title' => app_lang('operations_pending_my_approval')]);
+    }
+
+    private function hasAdminOverride(): bool
+    {
+        return $this->permissions->allowed('operations_admin_override', $this->login_user);
     }
 
     public function new_request()
@@ -192,8 +215,17 @@ class Operations extends Security_Controller
         $data['attachments'] = $this->db->table($this->p . 'oa_attachments')->where(['request_id' => $id, 'deleted_at' => null])->orderBy('created_at')->get()->getResult();
         $data['conversations'] = $this->db->table($this->p . 'oa_conversations')->where('request_id', $id)->orderBy('opened_at')->get()->getResult();
         $data['revisions'] = $this->db->table($this->p . 'oa_request_revisions')->where('request_id', $id)->orderBy('revision_no', 'DESC')->get()->getResult();
-        $data['can_decide'] = $request->current_stage_instance_id && $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
-        $data['active_assignment'] = $data['can_decide'] ? $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->get()->getRow() : null;
+        $isAssignedApprover = $request->current_stage_instance_id && $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
+        // operations_admin_override can decide any active stage even
+        // without being its assigned approver - shown as its own branch
+        // below (is_override_decision) so it's clear they're acting
+        // outside the normal chain, not silently pretending to be
+        // assigned. active_assignment (used for the delegate sub-form)
+        // stays tied to a genuine assignment - delegating something you
+        // were never actually assigned doesn't make sense.
+        $data['can_decide'] = $request->current_stage_instance_id && ($isAssignedApprover || $this->hasAdminOverride());
+        $data['is_override_decision'] = $data['can_decide'] && !$isAssignedApprover;
+        $data['active_assignment'] = $isAssignedApprover ? $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->get()->getRow() : null;
         $data['active_stage'] = $request->current_stage_instance_id ? $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->current_stage_instance_id)->get()->getRow() : null;
         $data['staff'] = $this->db->table($this->p . 'users')->select("id,CONCAT(first_name,' ',last_name) name")->where(['user_type'=>'staff','status'=>'active','deleted'=>0])->where('id !=',$this->login_user->id)->orderBy('first_name')->get()->getResult();
         $data['can_delete'] = $this->canDelete($request);
@@ -438,9 +470,14 @@ class Operations extends Security_Controller
         // redirected to "forbidden" (a non-JSON response, hence the
         // generic client-side error) on submit.
         $isAssignedApprover = $stageInstanceId && $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
-        if (!$requiredPermission || (!$isAssignedApprover && !$this->permissions->allowed($requiredPermission, $this->login_user))) app_redirect('forbidden');
+        // operations_admin_override: the "superadmin" of this module -
+        // decide any active stage regardless of assignment (Workflow_engine
+        // hands them a pending assignment on the fly), independent of the
+        // per-decision-type role permissions above.
+        $hasOverride = $this->hasAdminOverride();
+        if (!$requiredPermission || (!$isAssignedApprover && !$hasOverride && !$this->permissions->allowed($requiredPermission, $this->login_user))) app_redirect('forbidden');
         try {
-            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user);
+            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user, $hasOverride && !$isAssignedApprover);
             echo json_encode(['success' => true, 'message' => app_lang('operations_decision_recorded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) {
             log_message('warning', 'Operations decision rejected: {message}', ['message' => $e->getMessage()]);
@@ -559,7 +596,7 @@ class Operations extends Security_Controller
 
     private function visibleRequests($builder, string $idColumn = 'id', string $requesterColumn = 'requester_id')
     {
-        if (!$this->permissions->allowed('operations_view_all_requests', $this->login_user)) {
+        if (!$this->permissions->allowed('operations_view_all_requests', $this->login_user) && !$this->hasAdminOverride()) {
             $userId = (int) $this->login_user->id;
             $builder->groupStart()
                 ->where($requesterColumn, $userId)

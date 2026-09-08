@@ -89,7 +89,17 @@ class Operations_api extends ResourceController
     }
     public function pending():ResponseInterface
     {
-        $user=$this->auth();if(!$user)return $this->unauthorized();$rows=$this->db->table($this->p.'oa_assignments a')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version,a.id assignment_id')->join($this->p.'oa_stage_instances i','i.id=a.stage_instance_id')->join($this->p.'oa_requests r','r.id=i.request_id')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->where(['a.user_id'=>$user->id,'a.status'=>'pending'])->orderBy('i.due_at')->get()->getResultArray();return $this->respond(['success'=>true,'message'=>'Approval inbox','data'=>$rows]);
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        // operations_admin_override: same reasoning as Operations::pending()
+        // (web) - an inbox of the user's own assignments would be empty by
+        // default for them, so show every request org-wide actually
+        // waiting on a decision instead.
+        if((new Operations_permissions())->allowed('operations_admin_override',$user)){
+            $rows=$this->db->table($this->p.'oa_requests r')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->join($this->p.'oa_stage_instances i','i.id=r.current_stage_instance_id','left')->where(['r.status'=>'pending_approval','r.deleted'=>0])->orderBy('r.updated_at')->get()->getResultArray();
+        }else{
+            $rows=$this->db->table($this->p.'oa_assignments a')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version,a.id assignment_id')->join($this->p.'oa_stage_instances i','i.id=a.stage_instance_id')->join($this->p.'oa_requests r','r.id=i.request_id')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->where(['a.user_id'=>$user->id,'a.status'=>'pending'])->orderBy('i.due_at')->get()->getResultArray();
+        }
+        return $this->respond(['success'=>true,'message'=>'Approval inbox','data'=>$rows]);
     }
     public function show($id = null):ResponseInterface
     {
@@ -99,7 +109,12 @@ class Operations_api extends ResourceController
         $request['comments']=$this->db->table($this->p.'oa_comments')->select('user_name_snapshot,comment,visibility,created_at')->where('request_id',$id)->orderBy('created_at')->get()->getResultArray();
         $request['conversations']=$this->db->table($this->p.'oa_conversations')->where('request_id',$id)->orderBy('opened_at')->get()->getResultArray();
         $request['attachments']=$this->db->table($this->p.'oa_attachments')->select('id,original_name,mime_type,size_bytes,context,created_at')->where(['request_id'=>$id,'deleted_at'=>null])->orderBy('created_at')->get()->getResultArray();
-        $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRowArray():null;$request['active_assignment']=$assignment;$request['can_decide']=(bool)$assignment;
+        $assignment=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$request['current_stage_instance_id'],'user_id'=>$user->id,'status'=>'pending'])->get()->getRowArray():null;$request['active_assignment']=$assignment;
+        // operations_admin_override can decide any active stage even
+        // without being its assigned approver - Workflow_engine::decide()
+        // hands them a pending assignment on the fly (see decision()).
+        $request['can_decide']=(bool)$assignment||((bool)$request['current_stage_instance_id']&&(new Operations_permissions())->allowed('operations_admin_override',$user));
+        $request['is_override_decision']=$request['can_decide']&&!$assignment;
         $request['can_resubmit']=(int)$request['requester_id']===(int)$user->id&&$request['status']==='returned';
         if($request['can_resubmit']){
             $resubmitFields=$this->availableFields($this->db->table($this->p.'oa_fields')->select('id,field_key,label,field_type,is_required,config_json')->where('version_id',$request['version_id'])->orderBy('position')->get()->getResultArray());
@@ -135,7 +150,10 @@ class Operations_api extends ResourceController
         // authorization - it shouldn't also require a separate blanket
         // role permission the admin may never have thought to grant.
         $isAssignedApprover=$stageInstanceId&&$this->db->table($this->p.'oa_assignments')->where(['stage_instance_id'=>$stageInstanceId,'user_id'=>$user->id,'status'=>'pending'])->countAllResults()>0;
-        if(!$permission||(!$isAssignedApprover&&!(new Operations_permissions())->allowed($permission,$user)))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,$stageInstanceId,(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user);return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
+        // operations_admin_override: the "superadmin" of this module -
+        // decide any active stage regardless of assignment.
+        $hasOverride=(new Operations_permissions())->allowed('operations_admin_override',$user);
+        if(!$permission||(!$isAssignedApprover&&!$hasOverride&&!(new Operations_permissions())->allowed($permission,$user)))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,$stageInstanceId,(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user,$hasOverride&&!$isAssignedApprover);return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
     }
     public function comment(int $id):ResponseInterface
     {

@@ -17,7 +17,7 @@ class Access_service
 
     public function canView(object $request, object $user): bool
     {
-        if ($this->permissions->allowed('operations_view_all_requests', $user) || (int) $request->requester_id === (int) $user->id) return true;
+        if ($this->permissions->allowed('operations_view_all_requests', $user) || $this->permissions->allowed('operations_admin_override', $user) || (int) $request->requester_id === (int) $user->id) return true;
         if ($this->permissions->allowed('operations_view_department_requests', $user)) {
             $membership = $this->db->table($this->p . 'oa_user_departments')->where(['user_id' => $user->id, 'department_id' => $request->department_id])->countAllResults();
             if ($membership) return true;

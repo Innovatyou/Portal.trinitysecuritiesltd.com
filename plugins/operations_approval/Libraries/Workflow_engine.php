@@ -53,7 +53,7 @@ class Workflow_engine
         }
     }
 
-    public function decide(int $requestId, int $stageInstanceId, int $expectedLockVersion, string $decision, string $comment, object $actor): void
+    public function decide(int $requestId, int $stageInstanceId, int $expectedLockVersion, string $decision, string $comment, object $actor, bool $isOverride = false): void
     {
         if (!in_array($decision, ['approve', 'reject', 'return'], true)) {
             throw new \InvalidArgumentException('Unsupported decision.');
@@ -70,7 +70,25 @@ class Workflow_engine
             }
             $assignment = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'user_id' => $actor->id, 'status' => 'pending'])->get()->getRow();
             if (!$assignment) {
-                throw new \DomainException('You are not an active approver for this stage.');
+                if (!$isOverride) {
+                    throw new \DomainException('You are not an active approver for this stage.');
+                }
+                // operations_admin_override: hand this stage a pending
+                // assignment for the actor on the fly - the exact same
+                // mechanism Delegation_service uses to hand an assignment
+                // to someone else - so the decision below runs through the
+                // normal recording/threshold logic instead of a parallel
+                // code path. The unique key on (stage_instance_id,user_id)
+                // means this can only fail if the actor already holds some
+                // OTHER-status row for this stage (e.g. already decided,
+                // or delegated away) - surface that plainly rather than
+                // letting DBDebug=false swallow it as a silent no-op.
+                $inserted = $this->db->table($this->p . 'oa_assignments')->insert(['stage_instance_id' => $stageInstanceId, 'user_id' => $actor->id, 'source_snapshot' => 'admin_override', 'status' => 'pending', 'assigned_at' => get_current_utc_time()]);
+                if (!$inserted) {
+                    throw new \DomainException('You have already acted on this stage.');
+                }
+                $assignment = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'user_id' => $actor->id, 'status' => 'pending'])->get()->getRow();
+                $this->audit->record('admin_override_assigned', $requestId, $stageInstanceId, $actor);
             }
             $now = get_current_utc_time();
             $this->db->table($this->p . 'oa_decisions')->insert([

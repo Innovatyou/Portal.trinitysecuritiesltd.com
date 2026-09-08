@@ -1,5 +1,11 @@
 <?php
 $lang = [];
+// app_lang('attachments') is called directly (not operations_-prefixed)
+// in request_form.php and view.php, but the plugin never defined a bare
+// "attachments" key and the core app doesn't have one either - it fell
+// back to CI4's raw "file.key" miss text, showing literally
+// "default_lang.attachments" on the New Request form and request view.
+$lang['attachments'] = 'Attachments';
 $lang['operations_customer_signup'] = 'Customer self-registration';
 $lang['operations_customer_signup_help'] = 'Allow customers to create Organization or Personal client accounts from the web and mobile app. Staff accounts are created by administrators.';
 $lang['operations_disable'] = 'Disable';

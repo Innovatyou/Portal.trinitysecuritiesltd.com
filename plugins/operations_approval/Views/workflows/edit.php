@@ -66,8 +66,66 @@ if ($firstGroupId) {
     <?php foreach ($workflowTemplates as $tpl) { ?>
         <button type="button" class="btn btn-outline-secondary btn-sm oa-template-btn mr-2 mb-2" data-template="<?php echo esc(json_encode($tpl['definition'], JSON_UNESCAPED_SLASHES), 'attr'); ?>"><?php echo esc($tpl['label']); ?></button>
     <?php } ?>
-    <div><small class="text-muted">Loads a starting point into the approval levels below, which you can then adjust - or build levels from scratch with "+ Add approval level".</small></div>
+    <div><small class="text-muted">Loads a starting point into the form fields and approval levels below, which you can then adjust - or build both from scratch.</small></div>
 </div>
+<div class="form-group">
+    <label>Form fields</label>
+    <div id="oa-fields-container"></div>
+    <button type="button" id="oa-add-field" class="btn btn-outline-primary btn-sm"><i class="fa fa-plus"></i> Add field</button>
+    <div><small class="text-muted">What a requester fills in when creating this request. "Formatted text" and "Grid / table" let them type content directly instead of preparing and uploading a separate Word/Excel file.</small></div>
+</div>
+
+<div id="oa-field-template" style="display:none;">
+    <div class="card oa-field-row mb-2">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 form-group">
+                    <label>Field label</label>
+                    <input type="text" class="form-control form-control-sm oa-field-label" placeholder="e.g. Trade Notes">
+                </div>
+                <div class="col-md-3 form-group">
+                    <label>Field type</label>
+                    <select class="form-control form-control-sm oa-field-type">
+                        <option value="text">Short text</option>
+                        <option value="textarea">Paragraph text</option>
+                        <option value="richtext">Formatted text (like Word)</option>
+                        <option value="spreadsheet">Grid / table (like Excel)</option>
+                        <option value="dropdown">Dropdown list</option>
+                        <option value="radio">Radio buttons</option>
+                        <option value="date">Date</option>
+                        <option value="email">Email</option>
+                        <option value="number">Number</option>
+                        <option value="url">URL</option>
+                        <option value="currency">Currency amount</option>
+                    </select>
+                </div>
+                <div class="col-md-3 form-group">
+                    <label>Field key</label>
+                    <input type="text" class="form-control form-control-sm oa-field-key" placeholder="auto-generated">
+                </div>
+                <div class="col-md-1 form-group d-flex align-items-end">
+                    <label class="mb-0 text-nowrap"><input type="checkbox" class="oa-field-required"> Required</label>
+                </div>
+                <div class="col-md-1 form-group d-flex align-items-end justify-content-end">
+                    <button type="button" class="btn btn-outline-danger btn-sm oa-field-remove" title="Remove this field">&times;</button>
+                </div>
+            </div>
+            <div class="row oa-field-options-row" style="display:none;">
+                <div class="col-md-8 form-group">
+                    <label>Options (one per line)</label>
+                    <textarea class="form-control form-control-sm oa-field-options" rows="3" placeholder="Option A&#10;Option B"></textarea>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-8 form-group">
+                    <label>Help text (optional)</label>
+                    <input type="text" class="form-control form-control-sm oa-field-help">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="form-group">
     <label>Approval levels</label>
     <div id="oa-levels-container"></div>
@@ -140,28 +198,102 @@ if ($firstGroupId) {
             <div class="oa-level-field-panel form-group" style="display:none;">
                 <label>Field key that holds the approver's user ID</label>
                 <input type="text" class="form-control form-control-sm oa-level-field-key" placeholder="e.g. manager_id">
-                <small class="text-muted">Must match a field key defined in the JSON box's "fields" array.</small>
+                <small class="text-muted">Must match a field key defined in the "Form fields" section above.</small>
             </div>
         </div>
     </div>
 </div>
 
-<div class="form-group"><label for="oa-definition"><?php echo app_lang('operations_definition_json'); ?></label><textarea id="oa-definition" name="definition_json" class="form-control font-monospace" rows="24" required><?php echo esc($definition); ?></textarea><small class="text-muted"><?php echo app_lang('operations_definition_help'); ?> Fields aren't editable above yet - add/edit the "fields" array here directly; the levels above only manage "stages". Supported field "type" values: text, textarea, dropdown, radio, date, email, number, url, currency, "richtext" (a Word-style formatted text editor) and "spreadsheet" (a small Excel-style grid) - richtext and spreadsheet let a requester type the content directly instead of preparing and uploading a file.</small></div><button class="btn btn-primary"><?php echo app_lang('save'); ?></button><?php echo form_close(); ?></div></div>
+<div class="form-group"><label for="oa-definition"><?php echo app_lang('operations_definition_json'); ?></label><textarea id="oa-definition" name="definition_json" class="form-control font-monospace" rows="24" required><?php echo esc($definition); ?></textarea><small class="text-muted"><?php echo app_lang('operations_definition_help'); ?> This box is kept in sync with the "Form fields" and "Approval levels" sections above and updates automatically as you edit them - it's shown here for reference, or for advanced tweaks (conditions, SLA minutes) those sections don't have a control for yet.</small></div><button class="btn btn-primary"><?php echo app_lang('save'); ?></button><?php echo form_close(); ?></div></div>
 </div>
 <script>
-var oaExistingStages = <?php $decodedDefinition = json_decode($definition, true) ?: ['stages' => []]; echo json_encode($decodedDefinition['stages'] ?? [], JSON_UNESCAPED_SLASHES); ?>;
+<?php $decodedDefinition = json_decode($definition, true) ?: ['fields' => [], 'stages' => []]; ?>
+var oaExistingFields = <?php echo json_encode($decodedDefinition['fields'] ?? [], JSON_UNESCAPED_SLASHES); ?>;
+var oaExistingStages = <?php echo json_encode($decodedDefinition['stages'] ?? [], JSON_UNESCAPED_SLASHES); ?>;
 
 $(document).ready(function () {
     $('#operations-workflow-form').appForm({isModal: false, onSuccess: oaFormFeedback});
 
-    function currentFieldsFromTextarea() {
-        try {
-            var current = JSON.parse($('#oa-definition').val() || '{}');
-            return current.fields || [];
-        } catch (e) {
-            return [];
-        }
+    function slugifyFieldKey(text) {
+        var slug = (text || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+        if (!slug) return 'field';
+        // validateDefinition() requires keys to start with a letter.
+        return /^[a-z]/.test(slug) ? slug : 'f_' + slug;
     }
+
+    function updateFieldOptionsVisibility($row) {
+        var type = $row.find('.oa-field-type').val();
+        $row.find('.oa-field-options-row').toggle(type === 'dropdown' || type === 'radio');
+    }
+
+    function bindFieldRow($row) {
+        $row.find('.oa-field-label').on('input', function () {
+            var $key = $row.find('.oa-field-key');
+            if (!$key.data('oaManualKey')) {
+                $key.val(slugifyFieldKey($(this).val()));
+            }
+            rebuildDefinitionJson();
+        });
+        $row.find('.oa-field-key').on('input', function () {
+            $(this).data('oaManualKey', true);
+            rebuildDefinitionJson();
+        });
+        $row.find('.oa-field-type').on('change', function () {
+            updateFieldOptionsVisibility($row);
+            rebuildDefinitionJson();
+        });
+        $row.find('.oa-field-required, .oa-field-options, .oa-field-help').on('input change', rebuildDefinitionJson);
+        $row.find('.oa-field-remove').on('click', function () {
+            $row.remove();
+            rebuildDefinitionJson();
+        });
+        updateFieldOptionsVisibility($row);
+    }
+
+    function addFieldRow(prefill) {
+        var $row = $('#oa-field-template .oa-field-row').clone();
+        $('#oa-fields-container').append($row);
+        if (prefill) {
+            $row.find('.oa-field-label').val(prefill.label || '');
+            if (prefill.key) {
+                $row.find('.oa-field-key').val(prefill.key).data('oaManualKey', true);
+            }
+            $row.find('.oa-field-type').val(prefill.type || 'text');
+            $row.find('.oa-field-required').prop('checked', !!prefill.required);
+            $row.find('.oa-field-options').val((prefill.options || []).join('\n'));
+            $row.find('.oa-field-help').val(prefill.help || '');
+        }
+        bindFieldRow($row);
+        return $row;
+    }
+
+    function collectFields() {
+        var fields = [];
+        $('#oa-fields-container .oa-field-row').each(function () {
+            var $row = $(this);
+            var type = $row.find('.oa-field-type').val();
+            var label = $row.find('.oa-field-label').val() || '';
+            var key = $row.find('.oa-field-key').val() || slugifyFieldKey(label);
+            var field = {
+                key: key,
+                label: label || key,
+                type: type,
+                required: $row.find('.oa-field-required').is(':checked')
+            };
+            if (type === 'dropdown' || type === 'radio') {
+                field.options = $row.find('.oa-field-options').val().split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
+            }
+            var help = $row.find('.oa-field-help').val();
+            if (help) field.help = help;
+            fields.push(field);
+        });
+        return fields;
+    }
+
+    $('#oa-add-field').on('click', function () {
+        addFieldRow(null);
+        rebuildDefinitionJson();
+    });
 
     function rebuildDefinitionJson() {
         var stages = [];
@@ -201,7 +333,7 @@ $(document).ready(function () {
             if (advanced) $.extend(stage, advanced);
             stages.push(stage);
         });
-        var def = {fields: currentFieldsFromTextarea(), stages: stages};
+        var def = {fields: collectFields(), stages: stages};
         $('#oa-definition').val(JSON.stringify(def, null, 4));
     }
 
@@ -273,7 +405,10 @@ $(document).ready(function () {
 
     $('.oa-template-btn').on('click', function () {
         var def = JSON.parse($(this).attr('data-template'));
-        $('#oa-definition').val(JSON.stringify(def, null, 4));
+        $('#oa-fields-container').empty();
+        (def.fields || []).forEach(function (field) {
+            addFieldRow(field);
+        });
         $('#oa-levels-container').empty();
         (def.stages || []).forEach(function (stage) {
             addLevelRow(stage);
@@ -281,9 +416,17 @@ $(document).ready(function () {
         rebuildDefinitionJson();
     });
 
-    // Load this workflow's existing stages into the builder, if editing
-    // one - left as-is otherwise (a brand-new workflow starts with zero
-    // levels, same as the empty {"fields":[],"stages":[]} it always did).
+    // Load this workflow's existing fields/stages into the builders, if
+    // editing one - left as-is otherwise (a brand-new workflow starts
+    // empty, same as the empty {"fields":[],"stages":[]} it always did).
+    // Not followed by a rebuild - the textarea already holds the
+    // original definition (including any advanced field property these
+    // rows don't have a control for), and rebuilding immediately would
+    // silently drop that the moment the page loads, before anyone
+    // actually changed anything.
+    oaExistingFields.forEach(function (field) {
+        addFieldRow(field);
+    });
     oaExistingStages.forEach(function (stage) {
         addLevelRow(stage);
     });

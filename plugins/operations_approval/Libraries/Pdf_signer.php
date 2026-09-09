@@ -24,6 +24,8 @@ class Pdf_signer
         $pdf = new \setasign\Fpdi\Tcpdf\Fpdi();
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
+        // Signatures near the bottom edge must stay on the selected source page.
+        $pdf->SetAutoPageBreak(false, 0);
         $pageCount = $pdf->setSourceFile($sourcePath);
         if ($page <= 0) $page = $pageCount;
         if ($page > $pageCount) throw new \DomainException("This document only has {$pageCount} page(s)");

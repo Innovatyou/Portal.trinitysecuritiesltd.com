@@ -185,4 +185,7 @@ $lang['notification_operations_approval_reminder'] = 'sent an approval reminder.
 $lang['notification_operations_sla_breached'] = 'reported an approval SLA breach.';
 $lang['notification_operations_approval_delegated'] = 'delegated an operations approval.';
 
+$lang['operations_export_pdf'] = 'Export PDF';
+$lang['operations_request_report'] = 'Request report';
+
 return $lang;

@@ -203,7 +203,7 @@ class Operations extends Security_Controller
         return $codes ?: ['NGN'];
     }
 
-    public function view(int $id)
+    private function requestReportData(int $id): array
     {
         $request = $this->getRequest($id);
         if (!$this->canView($request)) app_redirect('forbidden');
@@ -215,6 +215,26 @@ class Operations extends Security_Controller
         $data['attachments'] = $this->db->table($this->p . 'oa_attachments')->where(['request_id' => $id, 'deleted_at' => null])->orderBy('created_at')->get()->getResult();
         $data['conversations'] = $this->db->table($this->p . 'oa_conversations')->where('request_id', $id)->orderBy('opened_at')->get()->getResult();
         $data['revisions'] = $this->db->table($this->p . 'oa_request_revisions')->where('request_id', $id)->orderBy('revision_no', 'DESC')->get()->getResult();
+        return $data;
+    }
+
+    public function export_pdf(int $id)
+    {
+        $data = $this->requestReportData($id);
+        $pdf = new \App\Libraries\Pdf();
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetFont('dejavusans', '', 10);
+        $pdf->SetTitle('Request report - ' . ($data['request']->request_no ?: $id));
+        $pdf->AddPage();
+        $pdf->writeHTML(view('operations_approval\Views\operations\request_pdf', $data));
+        return $this->response->download('request-report-' . $id . '.pdf', $pdf->Output('', 'S'));
+    }
+
+    public function view(int $id)
+    {
+        $data = $this->requestReportData($id);
+        $request = $data['request'];
         $isAssignedApprover = $request->current_stage_instance_id && $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $request->current_stage_instance_id, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
         // operations_admin_override can decide any active stage even
         // without being its assigned approver - shown as its own branch

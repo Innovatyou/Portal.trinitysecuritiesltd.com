@@ -97,6 +97,7 @@ $routes->get('operations/pending', '\operations_approval\Controllers\Operations:
 $routes->get('operations/new_request', '\operations_approval\Controllers\Operations::new_request');
 $routes->get('operations/form/(:num)', '\operations_approval\Controllers\Operations::form/$1');
 $routes->get('operations/view/(:num)', '\operations_approval\Controllers\Operations::view/$1');
+$routes->get('operations/export_pdf/(:num)', '\operations_approval\Controllers\Operations::export_pdf/$1');
 $routes->get('operations/reports', '\operations_approval\Controllers\Operations::reports');
 $routes->post('operations/create', '\operations_approval\Controllers\Operations::create', ['filter' => 'csrf']);
 $routes->post('operations/submit/(:num)', '\operations_approval\Controllers\Operations::submit/$1', ['filter' => 'csrf']);

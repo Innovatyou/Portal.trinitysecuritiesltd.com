@@ -432,13 +432,20 @@ class Operations extends Security_Controller
         if (!is_file($sourcePath)) return $this->jsonError(app_lang('not_found'));
 
         $signature = (string) $this->request->getPost('signature');
-        $signatureData = $signature ? base64_decode(get_array_value(explode(',', $signature), 1) ?: '') : '';
-        if (!$signatureData) return $this->jsonError(app_lang('operations_signature_required'));
+        if (strlen($signature) > 5000000 || !str_starts_with($signature, 'data:image/png;base64,')) return $this->jsonError(app_lang('operations_signature_required'));
+        $signatureData = base64_decode(substr($signature, 22), true);
+        $imageInfo = $signatureData ? @getimagesizefromstring($signatureData) : false;
+        if (!$imageInfo || $imageInfo[2] !== IMAGETYPE_PNG) return $this->jsonError(app_lang('operations_signature_required'));
 
-        // Fixed bottom-right placement (a plain page-number choice rather than
-        // mobile's drag-to-position UI - this is the simpler web equivalent).
-        $page = (int) $this->request->getPost('page');
-        $x = 0.66; $y = 0.85; $w = 0.30; $h = 0.10;
+        $page = filter_var($this->request->getPost('page'), FILTER_VALIDATE_INT);
+        $position = [];
+        foreach (['x', 'y', 'w', 'h'] as $key) {
+            $value = filter_var($this->request->getPost($key), FILTER_VALIDATE_FLOAT);
+            if ($value === false || !is_finite($value)) return $this->jsonError('Invalid signature position.');
+            $position[$key] = $value;
+        }
+        ['x' => $x, 'y' => $y, 'w' => $w, 'h' => $h] = $position;
+        if (!$page || $page < 1 || $x < 0 || $y < 0 || $w <= 0 || $h <= 0 || $x + $w > 1.000001 || $y + $h > 1.000001) return $this->jsonError('Choose a page and sign within the document.');
 
         try {
             $tempDir = rtrim(get_setting('temp_file_path'), '/\\');

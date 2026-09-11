@@ -123,6 +123,19 @@
     color: #fff;
 }
 
+/* Collapsed/icon-only mode reuses the same li:hover > a selector for a
+   completely different interaction (app.all.css widens the <a> to 240px
+   and reveals .menu-text) - stacked with the card-lift hover above, the
+   light, barely-there gradient meant to read as a subtle raised card on a
+   solid navy background instead became the whole visible surface behind
+   the revealed text, which is also white: nearly invisible white-on-white.
+   Force a solid, readable background and drop the 3D tilt here, since it
+   doesn't make sense combined with RISE's own width-expand animation. */
+.sidebar-toggled .sidebar .sidebar-menu > li.main:hover > a {
+    transform: none;
+    background: linear-gradient(165deg, var(--sb-navy) 0%, var(--sb-navy-2) 100%) !important;
+}
+
 .sidebar .sidebar-menu > li.main:hover > a .icon {
     transform: scale(1.1) rotate(-4deg);
     background: linear-gradient(145deg, var(--sb-lime), var(--sb-cyan));

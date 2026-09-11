@@ -28,3 +28,170 @@
         color: #f5325c;
     }
 }
+
+/* ===================================================================
+   Modern 3D interactive sidebar - purely visual/behavioral layer over
+   the existing #sidebar-menu markup (app/Views/includes/left_menu.php).
+   No menu-generation logic touched: every rule below targets classes
+   that markup already emits, so plugin-injected items, badges, custom
+   menu items and the active-state logic all keep working untouched.
+   =================================================================== */
+:root {
+    --sb-navy: #071b35;
+    --sb-navy-2: #0d2848;
+    --sb-lime: #a8e600;
+    --sb-cyan: #2dd4bf;
+}
+
+.sidebar {
+    background: linear-gradient(165deg, var(--sb-navy) 0%, var(--sb-navy-2) 55%, #0a1f3d 100%) !important;
+    border-right: 1px solid rgba(168, 230, 0, .08);
+    box-shadow: 6px 0 24px rgba(3, 12, 26, .35);
+    perspective: 900px;
+}
+
+/* .sidebar-scroll and .sidebar-brand are separate elements that each ship
+   their own opaque white background (assets/css/app.all.css) - left alone
+   they paint over the gradient above entirely, since they cover the whole
+   visible menu area. */
+.sidebar .sidebar-scroll {
+    background: transparent !important;
+}
+
+.sidebar .sidebar-brand {
+    background: transparent !important;
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, .35));
+}
+
+.sidebar .sidebar-menu {
+    padding: 10px 12px;
+}
+
+.sidebar .sidebar-menu > li.main {
+    margin: 4px 0;
+    list-style: none;
+}
+
+.sidebar .sidebar-menu > li.main > a {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0;
+    padding: 11px 14px;
+    border-radius: 14px;
+    background: linear-gradient(155deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .015));
+    border: 1px solid rgba(255, 255, 255, .06);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, .25), 0 6px 14px rgba(0, 0, 0, .18);
+    color: rgba(255, 255, 255, .78);
+    transform: translateZ(0) rotateX(0deg);
+    transform-style: preserve-3d;
+    transition: transform .28s cubic-bezier(.2, .8, .3, 1.15), box-shadow .28s ease, background .28s ease, border-color .28s ease, color .2s ease;
+    will-change: transform;
+}
+
+.sidebar .sidebar-menu > li.main > a .icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, rgba(168, 230, 0, .16), rgba(45, 212, 191, .10));
+    color: var(--sb-lime);
+    box-shadow: inset 0 1px rgba(255, 255, 255, .12), 0 2px 6px rgba(0, 0, 0, .25);
+    transition: transform .3s cubic-bezier(.34, 1.56, .64, 1), background .28s ease, color .28s ease;
+    margin: 0 !important;
+}
+
+.sidebar .sidebar-menu > li.main > a .menu-text {
+    font-weight: 600;
+    letter-spacing: .2px;
+}
+
+.sidebar .sidebar-menu > li.main > a .badge {
+    margin-left: auto;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+}
+
+/* Hover: lift toward the viewer with a slight tilt, icon pops and glows */
+.sidebar .sidebar-menu > li.main:hover > a {
+    transform: translateY(-3px) translateZ(18px) rotateX(4deg);
+    background: linear-gradient(155deg, rgba(255, 255, 255, .09), rgba(255, 255, 255, .03));
+    border-color: rgba(168, 230, 0, .22);
+    box-shadow: 0 10px 0 -6px rgba(0, 0, 0, .2), 0 16px 28px rgba(0, 0, 0, .32), 0 0 0 1px rgba(168, 230, 0, .08);
+    color: #fff;
+}
+
+.sidebar .sidebar-menu > li.main:hover > a .icon {
+    transform: scale(1.1) rotate(-4deg);
+    background: linear-gradient(145deg, var(--sb-lime), var(--sb-cyan));
+    color: #071b35;
+    box-shadow: 0 0 0 4px rgba(168, 230, 0, .12), 0 4px 12px rgba(168, 230, 0, .35);
+}
+
+/* Active: permanently raised, glowing accent edge */
+.sidebar .sidebar-menu > li.main.active > a,
+.sidebar .sidebar-menu > li.main.open > a {
+    background: linear-gradient(155deg, rgba(168, 230, 0, .16), rgba(45, 212, 191, .06));
+    border-color: rgba(168, 230, 0, .35);
+    color: #fff;
+    box-shadow: 0 8px 0 -5px rgba(0, 0, 0, .18), 0 14px 26px rgba(0, 0, 0, .3), inset 3px 0 0 var(--sb-lime);
+}
+
+.sidebar .sidebar-menu > li.main.active > a .icon,
+.sidebar .sidebar-menu > li.main.open > a .icon {
+    background: linear-gradient(145deg, var(--sb-lime), var(--sb-cyan));
+    color: #071b35;
+    box-shadow: 0 0 0 4px rgba(168, 230, 0, .12), 0 4px 12px rgba(168, 230, 0, .35);
+}
+
+/* Submenu: recessed "inset panel" so it reads as a lower depth layer */
+.sidebar .sidebar-menu > li.main > ul {
+    margin: 6px 4px 4px 16px;
+    padding: 6px 0 6px 14px;
+    border-left: 2px solid rgba(168, 230, 0, .18);
+    background: rgba(0, 0, 0, .14);
+    border-radius: 0 10px 10px 0;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, .25);
+}
+
+.sidebar .sidebar-menu > li.main > ul > li {
+    list-style: none;
+}
+
+.sidebar .sidebar-menu > li.main > ul > li > a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    margin: 1px 0;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, .62);
+    transition: transform .2s ease, background .2s ease, color .2s ease, padding-left .2s ease;
+}
+
+.sidebar .sidebar-menu > li.main > ul > li > a:hover {
+    background: rgba(168, 230, 0, .1);
+    color: #fff;
+    padding-left: 14px;
+    transform: translateX(2px);
+}
+
+.sidebar .sidebar-menu > li.main > ul > li.active > a {
+    background: rgba(168, 230, 0, .14);
+    color: var(--sb-lime);
+    font-weight: 600;
+}
+
+/* Respect users who've asked the OS to reduce motion */
+@media (prefers-reduced-motion: reduce) {
+    .sidebar .sidebar-menu > li.main > a,
+    .sidebar .sidebar-menu > li.main > a .icon,
+    .sidebar .sidebar-menu > li.main > ul > li > a {
+        transition: none !important;
+    }
+    .sidebar .sidebar-menu > li.main:hover > a {
+        transform: none;
+    }
+}

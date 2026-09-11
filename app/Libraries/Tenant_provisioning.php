@@ -341,6 +341,22 @@ class Tenant_provisioning {
              ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`)"
         );
 
+        // Without this, log_notification() (general_helper.php) self-curls
+        // this same app at CURLOPT_TIMEOUT=1 to create every notification -
+        // a full CI4 bootstraprarely finishes that self-request inside 1
+        // second, so it silently times out (logging is disabled by default
+        // too, so nothing records the failure) and the bell/sound/push
+        // pipeline never gets a row to work with. This flag makes
+        // log_notification() call the processor in-process instead -
+        // confirmed as the root cause of "notifications don't show" across
+        // every tenant on this platform, not something new-tenant-specific,
+        // but seeded here too so it can never bite a freshly provisioned
+        // company again.
+        $tenant_mysqli->query(
+            "INSERT INTO `{$db_prefix}settings` (`setting_name`, `setting_value`, `type`) VALUES ('log_direct_notifications', '1', 'app')
+             ON DUPLICATE KEY UPDATE `setting_value` = VALUES(`setting_value`)"
+        );
+
         // install/database.sql seeds zero roles - only the admin user
         // created above can do anything until someone builds a role by
         // hand. Confirmed directly: a plain staff account with no role has

@@ -129,5 +129,24 @@
         $("#sidebar-menu li").click(function() {
             $("#sidebar-menu li.active").removeClass("active");
         });
+
+        // Interactive 3D tilt: the CSS hover lift (custom-style.css) is a
+        // fixed transform: this tracks the actual cursor position inside
+        // each top-level item and skews the tilt toward it, so the "raised
+        // card" reacts like a real surface rather than a canned animation.
+        // Skipped on touch devices (no hover, and mousemove there is
+        // synthetic/unreliable) and for users who asked for reduced motion.
+        var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        var isTouch = window.matchMedia && window.matchMedia('(hover: none)').matches;
+        if (!prefersReducedMotion && !isTouch) {
+            $(document).on('mousemove', '.sidebar-menu > li.main > a', function(e) {
+                var rect = this.getBoundingClientRect();
+                var px = (e.clientX - rect.left) / rect.width - 0.5;
+                var py = (e.clientY - rect.top) / rect.height - 0.5;
+                this.style.transform = 'translateY(-3px) translateZ(18px) rotateX(' + (4 - py * 6) + 'deg) rotateY(' + (px * 6) + 'deg)';
+            }).on('mouseleave', '.sidebar-menu > li.main > a', function() {
+                this.style.transform = '';
+            });
+        }
     });
 </script>

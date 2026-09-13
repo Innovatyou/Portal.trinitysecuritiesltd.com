@@ -148,5 +148,27 @@
                 this.style.transform = '';
             });
         }
+
+        // Collapsed/icon-only sidebar: the submenu opens as a flyout
+        // positioned below-and-right of its ~60px-tall trigger icon, wider
+        // than the icon column itself once it has several items - CSS
+        // :hover alone can't keep it open while the mouse travels there,
+        // since any reasonably direct/diagonal path from the icon toward a
+        // lower item crosses a strip that's outside BOTH the icon's own
+        // (short) box and the flyout's (offset) box, closing it before the
+        // user arrives. Confirmed live: a simulated realistic mouse path
+        // closed the flyout before reaching "My requests". Keep it open
+        // with a short grace period instead of relying purely on :hover,
+        // the standard fix for this class of flyout menu.
+        var flyoutCloseTimer = null;
+        $(document).on('mouseenter', '.sidebar-toggled .sidebar-menu > li.main', function() {
+            clearTimeout(flyoutCloseTimer);
+            $(this).addClass('js-flyout-open');
+        }).on('mouseleave', '.sidebar-toggled .sidebar-menu > li.main', function() {
+            var $li = $(this);
+            flyoutCloseTimer = setTimeout(function() {
+                $li.removeClass('js-flyout-open');
+            }, 400);
+        });
     });
 </script>

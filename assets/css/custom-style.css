@@ -186,14 +186,61 @@
     border: 1px solid rgba(168, 230, 0, .18);
     border-radius: 10px;
     box-shadow: 0 14px 28px rgba(0, 0, 0, .4);
+    /* The in-flow submenu rule above sets margin/padding/border-left meant
+       for its recessed-panel look under an expanded item - left alone
+       those ALSO apply here (same element, this file just overrides
+       background/border/shadow), shifting this absolutely-positioned
+       flyout's actual box away from app.all.css's "left: 70px" anchor.
+       Margin isn't part of the hoverable box, so that gap became dead
+       space: moving the mouse from the icon toward the flyout crossed it
+       and broke the :hover chain, closing the flyout before a click could
+       land - reported as "items disappear before selecting any". Zero
+       these out so the flyout sits flush against the icon column instead,
+       and widen it (app.all.css's fixed 180px, minus this file's item
+       padding, wasn't enough room for longer labels like "Operations
+       dashboard" - reported as text "not showing fully"). */
+    margin: 0 !important;
+    padding: 6px 0 !important;
+    border-left: 1px solid rgba(168, 230, 0, .18) !important;
+    width: 230px !important;
+}
+
+.sidebar-toggled .sidebar .sidebar-menu li ul li {
+    width: 100% !important;
 }
 
 .sidebar-toggled .sidebar .sidebar-menu li:hover {
     background: transparent !important;
 }
 
+/* JS (left_menu.php) adds/removes this class with a short grace period on
+   mouseenter/mouseleave of the whole <li>, so the flyout stays open while
+   the mouse travels toward it even along a diagonal path that briefly
+   leaves both the icon's own box and the flyout's box - see the long
+   comment above. Mirrors the visibility/expand behavior app.all.css only
+   applies on real :hover (li:hover, li:hover > a, li:hover .menu-text,
+   li:hover ul), since a class alone doesn't get any of that for free. */
+.sidebar-toggled .sidebar .sidebar-menu li.js-flyout-open {
+    width: 250px;
+    background: transparent !important;
+}
+
+.sidebar-toggled .sidebar .sidebar-menu li.js-flyout-open > a {
+    width: 240px;
+}
+
+.sidebar-toggled .sidebar .sidebar-menu li.js-flyout-open > a .menu-text {
+    display: inline !important;
+}
+
+.sidebar-toggled .sidebar .sidebar-menu li.js-flyout-open > ul {
+    display: block !important;
+    max-height: 1000px !important;
+}
+
 .sidebar-toggled .sidebar .sidebar-menu li ul li a {
     color: rgba(255, 255, 255, .75);
+    white-space: nowrap;
 }
 
 .sidebar-toggled .sidebar .sidebar-menu li ul li a:hover {

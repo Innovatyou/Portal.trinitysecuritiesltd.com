@@ -213,6 +213,87 @@ class Workflow_engine
         }
     }
 
+    // Superadmin-only (operations_admin_override): reshuffle a request's
+    // not-yet-decided stages relative to each other, e.g. moving Control
+    // Review ahead of Finance Review. Only stage_instances still
+    // pending/active/overdue are touched - approved/rejected/skipped ones
+    // keep their recorded position forever. Positions are reassigned by
+    // permuting the SAME set of position values the open stages already
+    // occupy, so a completed/skipped stage sitting between them never
+    // collides with the new numbering.
+    public function reorderStages(int $requestId, object $actor, array $orderedStageInstanceIds): void
+    {
+        $this->db->transBegin();
+        try {
+            $request = $this->lockRequest($requestId);
+            $open = $this->db->query("SELECT * FROM `{$this->p}oa_stage_instances` WHERE `request_id`=? AND `status` IN ('pending','active','overdue') FOR UPDATE", [$requestId])->getResult();
+            if (count($open) < 2) throw new \DomainException('There is nothing left to reorder on this request.');
+            $byId = [];
+            foreach ($open as $instance) $byId[(int) $instance->id] = $instance;
+            $requestedIds = array_values(array_unique(array_map('intval', $orderedStageInstanceIds)));
+            $openIds = array_map('intval', array_keys($byId));
+            sort($openIds);
+            $sortedRequested = $requestedIds;
+            sort($sortedRequested);
+            if ($sortedRequested !== $openIds) {
+                throw new \DomainException('The new order must include exactly the stages still open on this request.');
+            }
+            $activeInstance = null;
+            foreach ($byId as $instance) {
+                if (in_array($instance->status, ['active', 'overdue'], true)) { $activeInstance = $instance; break; }
+            }
+            // Only demote the active stage if it's being pushed out of first
+            // place - a pure reshuffle among the untouched pending stages
+            // behind it never needs to touch it at all.
+            $demoteActive = $activeInstance && (int) $activeInstance->id !== $requestedIds[0];
+            if ($demoteActive) {
+                // Reordering ahead of an active stage effectively rewinds it
+                // to "hasn't happened yet" - safe only when nobody has
+                // actually acted on it yet. Otherwise a real approval or
+                // rejection would silently vanish from the audit trail.
+                $decided = $this->db->table($this->p . 'oa_decisions')->where('stage_instance_id', $activeInstance->id)->countAllResults();
+                if ($decided > 0) {
+                    throw new \DomainException('"' . $activeInstance->name_snapshot . '" already has a recorded decision and cannot be reordered ahead of. Approve, reject, or return it first.');
+                }
+            }
+            $positions = array_map(static fn($instance) => (int) $instance->position, $open);
+            sort($positions);
+            $oldOrder = [];
+            foreach ($byId as $instance) $oldOrder[] = ['id' => (int) $instance->id, 'name' => $instance->name_snapshot, 'position' => (int) $instance->position];
+            $newOrder = [];
+            foreach ($requestedIds as $index => $stageInstanceId) {
+                $instance = $byId[$stageInstanceId];
+                $newPosition = $positions[$index];
+                $newOrder[] = ['id' => $stageInstanceId, 'name' => $instance->name_snapshot, 'position' => $newPosition];
+                $update = ['position' => $newPosition, 'lock_version' => ((int) $instance->lock_version) + 1];
+                if ($demoteActive && $stageInstanceId === (int) $activeInstance->id) {
+                    $update += ['status' => 'pending', 'activated_at' => null, 'due_at' => null];
+                }
+                $this->db->table($this->p . 'oa_stage_instances')->where('id', $stageInstanceId)->update($update);
+            }
+            if ($demoteActive) {
+                // Fully clear the demoted stage's assignments (not just the
+                // pending one) rather than cancel-in-place: the unique key
+                // on (stage_instance_id,user_id) means re-resolving the same
+                // approver when this stage reactivates later would otherwise
+                // collide with a leftover row here and silently fail to
+                // insert (DBDebug is off in production). decided===0 above
+                // already guarantees none of these rows represent a real
+                // recorded decision, so nothing worth keeping is lost.
+                $this->db->table($this->p . 'oa_assignments')->where('stage_instance_id', $activeInstance->id)->delete();
+                $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['current_stage_instance_id' => null]);
+                $request->current_stage_instance_id = null;
+            }
+            $this->audit->record('stages_reordered', $requestId, null, $actor, ['order' => $oldOrder], ['order' => $newOrder]);
+            if ($demoteActive) $this->activateNext($request, $actor, $positions[0] - 1);
+            $this->db->transCommit();
+            if ($demoteActive) $this->notifyActiveApprovers($requestId, $actor);
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+    }
+
     private function snapshotStages(object $request): void
     {
         $stages = $this->db->table($this->p . 'oa_stages')->where('version_id', $request->version_id)->orderBy('position')->get()->getResult();

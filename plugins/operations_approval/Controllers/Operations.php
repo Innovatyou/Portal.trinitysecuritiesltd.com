@@ -250,6 +250,7 @@ class Operations extends Security_Controller
         $data['staff'] = $this->db->table($this->p . 'users')->select("id,CONCAT(first_name,' ',last_name) name")->where(['user_type'=>'staff','status'=>'active','deleted'=>0])->where('id !=',$this->login_user->id)->orderBy('first_name')->get()->getResult();
         $data['can_delete'] = $this->canDelete($request);
         $data['can_retry_configuration'] = $this->permissions->allowed('operations_manage_workflows', $this->login_user);
+        $data['can_reorder_stages'] = $this->hasAdminOverride();
         return $this->template->rander('operations_approval\Views\operations\view', $data);
     }
 
@@ -487,6 +488,22 @@ class Operations extends Security_Controller
             (new Workflow_engine())->retryConfiguration($id, $this->login_user, $manualApproverIds);
             $message = $manualApproverIds ? app_lang('operations_manual_assignment_done') : app_lang('operations_configuration_retry');
             echo json_encode(['success' => true, 'message' => $message, 'redirect_to' => get_uri('operations/view/' . $id)]);
+        } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
+    }
+
+    public function reorderStages(int $id)
+    {
+        // operations_admin_override is this module's "superadmin" right
+        // (see ADMIN_GUIDE.md) - the same permission that already lets
+        // someone decide any active stage regardless of assignment. Editing
+        // the sequence of an in-flight request's remaining stages is at
+        // least as sensitive, so it's gated identically rather than behind
+        // a separate, easy-to-forget-to-grant permission.
+        if (!$this->hasAdminOverride()) app_redirect('forbidden');
+        $orderedIds = array_map('intval', (array) $this->request->getPost('stage_instance_ids'));
+        try {
+            (new Workflow_engine())->reorderStages($id, $this->login_user, $orderedIds);
+            echo json_encode(['success' => true, 'message' => app_lang('operations_stages_reordered'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) { $this->jsonError($e->getMessage()); }
     }
 

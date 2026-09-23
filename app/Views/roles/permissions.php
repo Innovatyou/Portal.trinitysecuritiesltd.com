@@ -541,27 +541,52 @@
                     </li>
                 <?php } ?>
 
-                <?php if (get_setting("module_timeline")) { ?>
-                    <li>
-                        <span data-feather="key" class="icon-14 ml-20"></span>
-                        <h5><?php echo app_lang("set_timeline_permissions"); ?>:</h5>
-                        <div>
-                            <?php
-                            echo form_checkbox("timeline_permission_no", "1", ($timeline_permission == "no") ? true : false, "id='timeline_permission_no' class='form-check-input'");
-                            ?>
-                            <label for="timeline_permission_no"><?php echo app_lang("cant_see_the_timeline"); ?></label>
+                <?php //the timeline is the home page of team members, so its permissions are always available ?>
+                <li>
+                    <span data-feather="key" class="icon-14 ml-20"></span>
+                    <h5><?php echo app_lang("set_timeline_permissions"); ?>:</h5>
+                    <?php
+                    if ($timeline_permission !== "no" && $timeline_permission !== "specific") {
+                        $timeline_permission = "all";
+                    }
+                    ?>
+                    <div>
+                        <?php
+                        echo form_radio(array(
+                            "id" => "timeline_permission_no",
+                            "name" => "timeline_permission",
+                            "value" => "no",
+                            "class" => "timeline_permission toggle_specific form-check-input",
+                        ), $timeline_permission, ($timeline_permission === "no") ? true : false);
+                        ?>
+                        <label for="timeline_permission_no"><?php echo app_lang("cant_see_the_timeline"); ?></label>
+                    </div>
+                    <div>
+                        <?php
+                        echo form_radio(array(
+                            "id" => "timeline_permission_all",
+                            "name" => "timeline_permission",
+                            "value" => "all",
+                            "class" => "timeline_permission toggle_specific form-check-input",
+                        ), $timeline_permission, ($timeline_permission === "all") ? true : false);
+                        ?>
+                        <label for="timeline_permission_all"><?php echo app_lang("can_see_timeline_posts_from_all"); ?></label>
+                    </div>
+                    <div class="form-group">
+                        <?php
+                        echo form_radio(array(
+                            "id" => "timeline_permission_specific",
+                            "name" => "timeline_permission",
+                            "value" => "specific",
+                            "class" => "timeline_permission toggle_specific form-check-input",
+                        ), $timeline_permission, ($timeline_permission === "specific") ? true : false);
+                        ?>
+                        <label for="timeline_permission_specific"><?php echo app_lang("can_see_timeline_posts_from_specific_members_or_teams"); ?></label>
+                        <div class="specific_dropdown">
+                            <input type="text" value="<?php echo $timeline_permission_specific; ?>" name="timeline_permission_specific" id="timeline_permission_specific_dropdown" class="w100p validate-hidden" data-rule-required="true" data-msg-required="<?php echo app_lang('field_required'); ?>" placeholder="<?php echo app_lang('choose_members_and_or_teams'); ?>" />
                         </div>
-                        <div id="timeline_permission_specific_area" class="form-group <?php echo ($timeline_permission == "no") ? "hide" : ""; ?>">
-                            <?php
-                            echo form_checkbox("timeline_permission_specific_checkbox", "1", ($timeline_permission == "specific") ? true : false, "id='timeline_permission_specific_checkbox' class='timeline_permission_specific toggle_specific form-check-input'");
-                            ?>
-                            <label for="timeline_permission_specific_checkbox"><?php echo app_lang("can_see_timeline_posts_from_specific_members_or_teams"); ?></label>
-                            <div class="specific_dropdown">
-                                <input type="text" value="<?php echo $timeline_permission_specific; ?>" name="timeline_permission_specific" id="timeline_permission_specific_dropdown" class="w100p validate-hidden" data-rule-required="true" data-msg-required="<?php echo app_lang('field_required'); ?>" placeholder="<?php echo app_lang('choose_members_and_or_teams'); ?>" />
-                            </div>
-                        </div>
-                    </li>
-                <?php } ?>
+                    </div>
+                </li>
 
                 <?php if (get_setting("module_lead")) { ?>
                     <li>
@@ -1412,11 +1437,10 @@
         toggle_specific_dropdown();
 
         function toggle_specific_dropdown() {
-            var selectors = [".leave_permission", ".attendance_permission", ".timesheet_manage_permission", ".team_member_update_permission", ".ticket_permission", ".message_permission_specific", ".timeline_permission_specific", ".client_permission", ".accessible_ai_agents_permission"];
+            var selectors = [".leave_permission", ".attendance_permission", ".timesheet_manage_permission", ".team_member_update_permission", ".ticket_permission", ".message_permission_specific", ".timeline_permission", ".client_permission", ".accessible_ai_agents_permission"];
             $.each(selectors, function(index, element) {
                 var $element = $(element + ":checked");
                 if (((element !== ".message_permission_specific" && $element.val() === "specific") || (element === ".message_permission_specific" && $element.is(":checked") && !$("#message_permission_specific_area").hasClass("hide"))) ||
-                    ((element !== ".timeline_permission_specific" && $element.val() === "specific") || (element === ".timeline_permission_specific" && $element.is(":checked") && !$("#timeline_permission_specific_area").hasClass("hide"))) ||
                     ($element.val() === "specific_excluding_own" && $element.is(":checked"))) {
 
                     $(element).closest("li").find(".specific_dropdown").hide().find("input").removeClass("validate-hidden"); //hide other active dropdown first
@@ -1489,16 +1513,6 @@
             }
         }).change();
 
-        //show/hide timeline permission checkbox
-        $("#timeline_permission_no").click(function() {
-            if ($(this).is(":checked")) {
-                $("#timeline_permission_specific_area").addClass("hide");
-            } else {
-                $("#timeline_permission_specific_area").removeClass("hide");
-            }
-
-            toggle_specific_dropdown();
-        });
         $("#client_groups_specific_dropdown").select2({
             multiple: true,
             data: <?php echo ($client_groups_dropdown); ?>

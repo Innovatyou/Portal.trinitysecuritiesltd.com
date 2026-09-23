@@ -26,6 +26,12 @@ class Left_menu {
             $permission_manager = new Permission_manager($this->ci);
             $sidebar_menu = array("dashboard" => $dashboard_menu);
 
+            //the posts feed is the home page of team members, so keep it at the top of the menu
+            $access_timeline = ($this->ci->login_user->is_admin || get_array_value($this->ci->login_user->permissions, "timeline_permission") !== "no");
+            if ($access_timeline) {
+                $sidebar_menu["timeline"] = array("name" => "timeline", "url" => "timeline", "class" => "send");
+            }
+
             $permissions = $this->ci->login_user->permissions;
 
             $access_expense = get_array_value($permissions, "expense");
@@ -44,7 +50,6 @@ class Left_menu {
             $client_message_users_array = explode(",", $client_message_users);
             $access_messages = ($this->ci->login_user->is_admin || get_array_value($permissions, "message_permission") !== "no" || in_array($this->ci->login_user->id, $client_message_users_array));
             $access_file_manager = get_array_value($permissions, "file_manager");
-            $access_timeline = ($this->ci->login_user->is_admin || get_array_value($permissions, "timeline_permission") !== "no");
 
             if (get_setting("module_event") == "1") {
                 $sidebar_menu["events"] = array("name" => "events", "url" => "events", "class" => "calendar");
@@ -148,11 +153,6 @@ class Left_menu {
                 $team_submenu["leaves"] = array("name" => "leaves", "url" => "leaves/leave_info", "class" => "log-out");
             }
 
-
-
-            if (get_setting("module_timeline") == "1" && $access_timeline) {
-                $team_submenu["timeline"] = array("name" => "timeline", "url" => "timeline", "class" => "send");
-            }
 
 
             if (get_setting("module_announcement") == "1") {

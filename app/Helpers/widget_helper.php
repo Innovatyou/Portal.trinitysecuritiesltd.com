@@ -91,6 +91,11 @@ if (!function_exists('timeline_widget')) {
             }
         }
 
+        //posts can be shared with a team only, admins can see everything
+        if (!$ci->login_user->is_admin) {
+            $params["visible_to_user_id"] = $ci->login_user->id;
+        }
+
         $Posts_model = model("App\Models\Posts_model");
         $logs = $Posts_model->get_details($params);
         $view_data["posts"] = $logs->result;

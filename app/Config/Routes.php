@@ -8,7 +8,8 @@ use CodeIgniter\Router\RouteCollection;
 
 // We get a performance increase by specifying the default
 // route since we don't have to scan directories.
-$routes->get('/', 'Dashboard::index');
+//signin redirects a logged in user to the default landing page (the posts feed for staff)
+$routes->get('/', 'Signin::index');
 
 //custom routing for custom pages
 //this route will move 'about/any-text' to 'domain.com/about/index/any-text'

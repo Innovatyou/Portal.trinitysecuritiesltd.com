@@ -32,20 +32,51 @@ class Timeline extends Security_Controller {
         if ($this->login_user->user_type == "staff" && !$this->login_user->is_admin && get_array_value($this->login_user->permissions, "timeline_permission") == "specific" && $post_info->created_by && !in_array($post_info->created_by, $this->allowed_members)) {
             app_redirect("forbidden");
         }
+
+        //a reply follows the visibility of its main post
+        $main_post_id = $post_info->post_id ? $post_info->post_id : $post_info->id;
+        if ($main_post_id && !$this->login_user->is_admin && !$this->Posts_model->is_visible_to_user($main_post_id, $this->login_user->id)) {
+            app_redirect("forbidden");
+        }
     }
 
-    /* load timeline view */
-
-    function index() {
-        $this->check_module_availability("module_timeline");
-        $this->check_timeline_user_permission();
-
-        $view_data['team_members'] = "";
-        $this->init_permission_checker("message_permission");
-        if (get_array_value($this->login_user->permissions, "message_permission") !== "no") {
-            $view_data['team_members'] = $this->Messages_model->get_users_for_messaging($this->get_user_options_for_query("staff"))->getResult();
+    //teams the login user can share a post with: all teams for admins, own teams for others
+    private function _get_shareable_teams() {
+        $teams = $this->Team_model->get_all_where(array("deleted" => 0))->getResult();
+        if ($this->login_user->is_admin) {
+            return $teams;
         }
 
+        $my_teams = array();
+        foreach ($teams as $team) {
+            if (in_array($this->login_user->id, explode(",", $team->members))) {
+                $my_teams[] = $team;
+            }
+        }
+        return $my_teams;
+    }
+
+    private function _get_valid_share_with($share_with) {
+        if (preg_match('/^team:(\d+)$/', $share_with, $matches)) {
+            foreach ($this->_get_shareable_teams() as $team) {
+                if ($team->id == $matches[1]) {
+                    return $share_with;
+                }
+            }
+        }
+
+        return "all";
+    }
+
+    /* load timeline view, it's the home page of the team members after signin */
+
+    function index() {
+        //team members without timeline access land on the operations dashboard instead
+        if (!$this->check_access_on_timeline_for_this_user()) {
+            app_redirect("operations");
+        }
+
+        $view_data['shareable_teams'] = $this->_get_shareable_teams();
         return $this->template->rander("timeline/index", $view_data);
     }
 
@@ -72,10 +103,12 @@ class Timeline extends Security_Controller {
             "created_at" => get_current_utc_time(),
             "post_id" => $post_id,
             "description" => $this->request->getPost('description'),
-            "share_with" => ""
+            "share_with" => $post_id ? "" : $this->_get_valid_share_with($this->request->getPost('share_with'))
         );
 
         $data = clean_data($data);
+        //the description column is utf8mb3, so store emojis (4-byte characters) as html entities
+        $data["description"] = mb_encode_numericentity($data["description"], array(0x10000, 0x10FFFF, 0, 0x1FFFFF), "UTF-8");
         $data["files"] = $files_data; //don't clean serilized data
 
         $save_id = $this->Posts_model->ci_save($data, $id);

@@ -101,13 +101,14 @@ class Signin extends App_Controller {
         }
     }
 
-    //staff land on the Operations dashboard by default; clients keep the regular dashboard
-    //since the Operations screens are restricted to team members (access_only_team_members)
+    //staff land on the posts feed (timeline) by default; clients keep the regular dashboard
+    //since the timeline is restricted to team members (access_only_team_members).
+    //staff without timeline access are sent on to the Operations dashboard by the timeline itself
     private function _default_landing_page() {
         $login_user_id = $this->Users_model->login_user_id();
         $user = $login_user_id ? $this->Users_model->get_one($login_user_id) : null;
         if ($user && $user->user_type === "staff") {
-            return "operations";
+            return "timeline";
         }
 
         return "dashboard/view";

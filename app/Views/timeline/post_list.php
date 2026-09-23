@@ -28,6 +28,27 @@
             <?php } ?>
             <?php
             if ($is_first_load) {
+            ?>
+                <style type="text/css">
+                    #timeline .post-role-badge {
+                        background: var(--sb-navy, #071b35);
+                        color: #fff;
+                        font-weight: 500;
+                        font-size: 13px;
+                        border-radius: 6px;
+                        padding: 4px 9px;
+                    }
+
+                    #timeline .post-menu-toggle:after {
+                        display: none;
+                    }
+
+                    #timeline .post-description {
+                        font-size: 16px;
+                        line-height: 1.65;
+                    }
+                </style>
+            <?php
                 echo "<div id='timeline'>";
             }
 
@@ -43,39 +64,54 @@
                         <div class="card clearfix mt15">
 
                             <div class="card-body">
+                                <?php
+                                //show the role of the creator beside the name
+                                $created_by_role = $post->created_by_is_admin ? app_lang("administrator") : ($post->created_by_role_title ? $post->created_by_role_title : $post->created_by_job_title);
+                                if ($post->share_with_team) {
+                                    $share_with_icon = "<i data-feather='users' class='icon-14'></i>";
+                                    $share_with_title = app_lang("team") . ": " . $post->share_with_team;
+                                } else {
+                                    $share_with_icon = "<i data-feather='globe' class='icon-14'></i>";
+                                    $share_with_title = app_lang("public");
+                                }
+                                ?>
                                 <div class="clearfix mb15">
-                                    <div class="d-flex">
-                                        <div class="w-100">
-                                            <div class="d-flex">
-                                                <div class="flex-shrink-0 me-2">
-                                                    <span class="avatar avatar-sm">
-                                                        <img src="<?php echo get_avatar($post->created_by_avatar); ?>" alt="..." />
-                                                    </span>
-                                                </div>
-                                                <div class="w-100">
-                                                    <div class="mt5"><?php echo get_team_member_profile_link($post->created_by, $post->created_by_user, array("class" => "dark strong")); ?></div>
-                                                    <small><span class="text-off"><?php echo format_to_relative_time($post->created_at); ?></span></small>
-                                                </div>
-                                            </div>
+                                    <div class="d-flex align-items-center">
+                                        <div class="flex-shrink-0 me-3">
+                                            <span class="avatar avatar-md post-avatar">
+                                                <img src="<?php echo get_avatar($post->created_by_avatar); ?>" alt="..." />
+                                            </span>
                                         </div>
-                                        <!--  only admin and creator can delete the post -->
-                                        <?php if ($login_user->is_admin || $post->created_by == $login_user->id) { ?>
-                                            <div class="flex-shrink-0">
-                                                <span class="float-end dropdown">
-                                                    <div class="text-off dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="true">
-                                                        <i data-feather="chevron-down" class="icon"></i>
-                                                    </div>
-                                                    <ul class="dropdown-menu" role="menu">
-                                                        <li role="presentation"><?php echo ajax_anchor(get_uri("timeline/delete/$post->id"), "<i data-feather='x' class='icon-16'></i> " . app_lang('delete'), array("class" => "dropdown-item", "title" => app_lang('delete'), "data-fade-out-on-success" => "#post-content-container-$post->id")); ?> </li>
-                                                    </ul>
-                                                </span>
+                                        <div class="w-100">
+                                            <div class="d-flex flex-wrap align-items-center gap-2">
+                                                <?php echo get_team_member_profile_link($post->created_by, $post->created_by_user, array("class" => "dark strong font-16")); ?>
+                                                <?php if ($created_by_role) { ?>
+                                                    <span class="badge post-role-badge"><?php echo esc($created_by_role); ?></span>
+                                                <?php } ?>
                                             </div>
-                                        <?php } ?>
-
+                                            <small class="text-off d-inline-flex align-items-center gap-1">
+                                                <span><?php echo format_to_relative_time($post->created_at); ?></span>
+                                                <span title="<?php echo esc($share_with_title); ?>"><?php echo $share_with_icon; ?></span>
+                                            </small>
+                                        </div>
+                                        <div class="flex-shrink-0">
+                                            <span class="float-end dropdown">
+                                                <div class="text-off dropdown-toggle post-menu-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="true">
+                                                    <i data-feather="more-vertical" class="icon"></i>
+                                                </div>
+                                                <ul class="dropdown-menu dropdown-menu-end" role="menu">
+                                                    <li role="presentation"><?php echo anchor(get_uri("timeline/post/$post->id"), "<i data-feather='external-link' class='icon-16'></i> " . app_lang('view'), array("class" => "dropdown-item", "title" => app_lang('view'))); ?></li>
+                                                    <!--  only admin and creator can delete the post -->
+                                                    <?php if ($login_user->is_admin || $post->created_by == $login_user->id) { ?>
+                                                        <li role="presentation"><?php echo ajax_anchor(get_uri("timeline/delete/$post->id"), "<i data-feather='x' class='icon-16'></i> " . app_lang('delete'), array("class" => "dropdown-item", "title" => app_lang('delete'), "data-fade-out-on-success" => "#post-content-container-$post->id")); ?> </li>
+                                                    <?php } ?>
+                                                </ul>
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <p>
+                                <p class="post-description">
                                     <?php echo $post->description ? custom_nl2br(convert_comment_link(link_it(process_images_from_content($post->description)))) : ""; ?>
                                 </p>
 

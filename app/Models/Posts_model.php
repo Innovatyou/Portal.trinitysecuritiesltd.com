@@ -14,6 +14,8 @@ class Posts_model extends Crud_model {
     function get_details($options = array()) {
         $posts_table = $this->db->prefixTable('posts');
         $users_table = $this->db->prefixTable('users');
+        $roles_table = $this->db->prefixTable('roles');
+        $team_table = $this->db->prefixTable('team');
         $where = "";
 
         $limit = $this->_get_clean_value($options, "limit");
@@ -35,6 +37,12 @@ class Posts_model extends Crud_model {
             $sort = "ASC";
         } else {
             $where .= " AND $posts_table.post_id=0";
+
+            //non-admins only see public posts, their own posts and posts shared with a team they belong to
+            $visible_to_user_id = $this->_get_clean_value($options, "visible_to_user_id");
+            if ($visible_to_user_id) {
+                $where .= " AND (" . $this->_get_visibility_where($visible_to_user_id) . ")";
+            }
         }
 
         $user_id = $this->_get_clean_value($options, "user_id");
@@ -48,9 +56,12 @@ class Posts_model extends Crud_model {
         }
 
         $sql = "SELECT SQL_CALC_FOUND_ROWS $posts_table.*, $posts_table.id AS parent_post_id, CONCAT($users_table.first_name, ' ',$users_table.last_name) AS created_by_user, $users_table.image as created_by_avatar,
+            $users_table.is_admin AS created_by_is_admin, $users_table.job_title AS created_by_job_title, $roles_table.title AS created_by_role_title,
+            (SELECT $team_table.title FROM $team_table WHERE CONCAT('team:', $team_table.id)=$posts_table.share_with LIMIT 1) AS share_with_team,
             (SELECT COUNT($posts_table.id) as total_replies FROM $posts_table WHERE $posts_table.post_id=parent_post_id AND $posts_table.deleted=0) AS total_replies
         FROM $posts_table
         LEFT JOIN $users_table ON $users_table.id= $posts_table.created_by
+        LEFT JOIN $roles_table ON $roles_table.id= $users_table.role_id
         WHERE $posts_table.deleted=0 $where
         ORDER BY $posts_table.created_at $sort
         LIMIT $offset, $limit";
@@ -58,6 +69,26 @@ class Posts_model extends Crud_model {
         $data->result = $this->db->query($sql)->getResult();
         $data->found_rows = $this->db->query("SELECT FOUND_ROWS() as found_rows")->getRow()->found_rows;
         return $data;
+    }
+
+    private function _get_visibility_where($user_id) {
+        $posts_table = $this->db->prefixTable('posts');
+        $team_table = $this->db->prefixTable('team');
+        $user_id = (int) $user_id;
+
+        return "$posts_table.share_with IS NULL OR $posts_table.share_with='' OR $posts_table.share_with='all' OR $posts_table.created_by=$user_id
+            OR EXISTS (SELECT 1 FROM $team_table WHERE $team_table.deleted=0 AND CONCAT('team:', $team_table.id)=$posts_table.share_with AND FIND_IN_SET($user_id, $team_table.members))";
+    }
+
+    //check if a main post is visible to the given user based on its share_with value
+    function is_visible_to_user($post_id, $user_id) {
+        $posts_table = $this->db->prefixTable('posts');
+        $post_id = (int) $post_id;
+
+        $sql = "SELECT COUNT($posts_table.id) AS total
+        FROM $posts_table
+        WHERE $posts_table.id=$post_id AND (" . $this->_get_visibility_where($user_id) . ")";
+        return $this->db->query($sql)->getRow()->total ? true : false;
     }
 
     function count_new_posts($allowed_member_ids = "") {

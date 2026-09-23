@@ -295,14 +295,14 @@ class Roles extends Security_Controller {
 
         $job_info_manage_permission = $this->request->getPost('job_info_manage_permission');
 
-        $timeline_permission = "";
+        //can't see the timeline, see posts from all or see posts from specific members/teams only
+        $timeline_permission = $this->request->getPost('timeline_permission');
         $timeline_permission_specific = "";
 
-        if ($this->request->getPost('timeline_permission_no')) {
-            $timeline_permission = "no";
-        } else if ($this->request->getPost('timeline_permission_specific_checkbox')) {
-            $timeline_permission = "specific";
+        if ($timeline_permission === "specific") {
             $timeline_permission_specific = $this->request->getPost("timeline_permission_specific");
+        } else if ($timeline_permission !== "no") {
+            $timeline_permission = "all";
         }
 
         $client_feedback_access_permission = $this->request->getPost('client_feedback_access_permission');

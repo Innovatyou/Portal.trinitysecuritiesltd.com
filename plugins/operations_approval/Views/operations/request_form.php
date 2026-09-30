@@ -36,7 +36,23 @@ else echo form_input(['id' => 'field-' . $field->field_key, 'name' => 'field_' .
 <button type="submit" name="save_draft" value="1" class="btn btn-default mr10"><?php echo app_lang('operations_save_as_draft'); ?></button><button type="submit" name="submit_request" value="1" class="btn btn-primary"><?php echo app_lang('operations_submit_request'); ?></button>
 <?php echo form_close(); ?>
 <script>$(document).ready(function(){
-    $('#operations-create-form').appForm({isModal:false, onSuccess: oaFormFeedback});
+    // Android Chrome can discard this tab while the Files/Drive app is open
+    // to pick a PDF, then reload it on return. Keep what the requester typed
+    // in sessionStorage (it survives that reload) and put it back.
+    var $oaForm = $('#operations-create-form');
+    var oaDraftKey = 'oa-request-draft-<?php echo (int) $workflow->id; ?>';
+    var $oaDraftFields = function () { return $oaForm.find('input[name], select[name], textarea[name]').not('[type=file], [type=hidden], [type=submit], [type=button], [name^=custom_field_]'); };
+    try {
+        var oaDraft = JSON.parse(sessionStorage.getItem(oaDraftKey) || '{}');
+        $oaDraftFields().each(function () { if (Object.prototype.hasOwnProperty.call(oaDraft, this.name)) $(this).val(oaDraft[this.name]); });
+    } catch (e) {}
+    $oaForm.on('input change', 'input, select, textarea', function () {
+        try { var draft = {}; $oaDraftFields().each(function () { draft[this.name] = $(this).val(); }); sessionStorage.setItem(oaDraftKey, JSON.stringify(draft)); } catch (e) {}
+    });
+    $oaForm.appForm({isModal:false, onSuccess: function (result) {
+        try { sessionStorage.removeItem(oaDraftKey); } catch (e) {}
+        oaFormFeedback(result);
+    }});
     if(window.initOnDemandWYSIWYGEditor){$('.oa-richtext-field').each(function(){initOnDemandWYSIWYGEditor($(this));});}
     if(window.feather){feather.replace();}
     // Requester-added extras, separate from the workflow's own fields

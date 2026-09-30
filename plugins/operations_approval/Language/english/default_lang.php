@@ -191,5 +191,6 @@ $lang['notification_operations_approval_delegated'] = 'delegated an operations a
 
 $lang['operations_export_pdf'] = 'Export PDF';
 $lang['operations_request_report'] = 'Request report';
+$lang['operations_page_reloaded_by_browser'] = 'Your browser reloaded this page while you were choosing a file, usually because the phone was low on memory. Your details have been restored - please attach the file again. Closing other apps and browser tabs first can help.';
 
 return $lang;

@@ -124,8 +124,17 @@ $custom_filters = @unserialize($custom_filters);
     // making every save on that restored page fail with a 403 and no
     // explanation. Forcing a real reload on bfcache restore keeps the
     // embedded token current instead.
+    //
+    // Mobile browsers (iOS Safari especially) also restore from bfcache when
+    // returning from the native file picker, so an unconditional reload wipes
+    // the document the user just selected. Only reload when the page sat in
+    // the cache long enough for the token to plausibly be stale.
+    var pageHiddenAt = 0;
+    window.addEventListener('pagehide', function () {
+        pageHiddenAt = Date.now();
+    });
     window.addEventListener('pageshow', function (event) {
-        if (event.persisted) {
+        if (event.persisted && pageHiddenAt && (Date.now() - pageHiddenAt) > 10 * 60 * 1000) {
             window.location.reload();
         }
     });

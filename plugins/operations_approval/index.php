@@ -66,7 +66,7 @@ app_hooks()->add_action('app_hook_after_cron_run', function () {
 });
 
 app_hooks()->add_filter('app_filter_notification_config', function ($events) {
-    $operationEvents = ['request_submitted', 'approval_assigned', 'request_approved', 'request_rejected', 'request_returned', 'information_requested', 'request_resubmitted', 'request_completed', 'approval_reminder', 'sla_breached', 'approval_delegated'];
+    $operationEvents = ['request_submitted', 'approval_assigned', 'request_approved', 'request_rejected', 'request_returned', 'information_requested', 'request_resubmitted', 'request_completed', 'approval_reminder', 'sla_breached', 'approval_delegated', 'approval_revoked'];
     foreach ($operationEvents as $event) {
         $events['operations_' . $event] = [
             'notify_to' => ['operations_recipients'],
@@ -94,6 +94,7 @@ $routes->get('operations', '\operations_approval\Controllers\Operations::index')
 $routes->get('operations/my_requests', '\operations_approval\Controllers\Operations::my_requests');
 $routes->get('operations/requests', '\operations_approval\Controllers\Operations::requests');
 $routes->get('operations/pending', '\operations_approval\Controllers\Operations::pending');
+$routes->get('operations/other_pending', '\operations_approval\Controllers\Operations::other_pending');
 $routes->get('operations/new_request', '\operations_approval\Controllers\Operations::new_request');
 $routes->get('operations/form/(:num)', '\operations_approval\Controllers\Operations::form/$1');
 $routes->get('operations/view/(:num)', '\operations_approval\Controllers\Operations::view/$1');
@@ -102,6 +103,7 @@ $routes->get('operations/reports', '\operations_approval\Controllers\Operations:
 $routes->post('operations/create', '\operations_approval\Controllers\Operations::create', ['filter' => 'csrf']);
 $routes->post('operations/submit/(:num)', '\operations_approval\Controllers\Operations::submit/$1', ['filter' => 'csrf']);
 $routes->post('operations/decide/(:num)', '\operations_approval\Controllers\Operations::decide/$1', ['filter' => 'csrf']);
+$routes->post('operations/revoke_approval/(:num)', '\operations_approval\Controllers\Operations::revoke_approval/$1', ['filter' => 'csrf']);
 $routes->post('operations/comment/(:num)', '\operations_approval\Controllers\Operations::comment/$1', ['filter' => 'csrf']);
 $routes->post('operations/request_information/(:num)', '\operations_approval\Controllers\Operations::request_information/$1', ['filter' => 'csrf']);
 $routes->post('operations/respond_information/(:num)', '\operations_approval\Controllers\Operations::respond_information/$1', ['filter' => 'csrf']);
@@ -136,9 +138,11 @@ $routes->post('customersapi/profile/avatar', '\operations_approval\Controllers\O
 $routes->get('customersapi/operations/workflows', '\operations_approval\Controllers\Operations_api::workflows');
 $routes->get('customersapi/operations/requests', '\operations_approval\Controllers\Operations_api::requests');
 $routes->get('customersapi/operations/pending', '\operations_approval\Controllers\Operations_api::pending');
+$routes->get('customersapi/operations/pending/others', '\operations_approval\Controllers\Operations_api::otherPending');
 $routes->get('customersapi/operations/requests/(:num)', '\operations_approval\Controllers\Operations_api::show/$1');
 $routes->post('customersapi/operations/requests', '\operations_approval\Controllers\Operations_api::create');
 $routes->post('customersapi/operations/requests/(:num)/decision', '\operations_approval\Controllers\Operations_api::decision/$1');
+$routes->post('customersapi/operations/requests/(:num)/revoke-approval', '\operations_approval\Controllers\Operations_api::revokeApproval/$1');
 $routes->post('customersapi/operations/requests/(:num)/comment', '\operations_approval\Controllers\Operations_api::comment/$1');
 $routes->post('customersapi/operations/requests/(:num)/information', '\operations_approval\Controllers\Operations_api::information/$1');
 $routes->post('customersapi/operations/requests/(:num)/resubmit', '\operations_approval\Controllers\Operations_api::resubmit/$1');

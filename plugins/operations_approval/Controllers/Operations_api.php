@@ -87,19 +87,27 @@ class Operations_api extends ResourceController
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();$builder=$this->db->table($this->p.'oa_requests r')->select('r.id,r.request_no,r.title,r.status,r.priority,r.created_at,r.updated_at,w.name workflow_name,i.name_snapshot current_stage')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->join($this->p.'oa_stage_instances i','i.id=r.current_stage_instance_id','left')->where(['r.requester_id'=>$user->id,'r.deleted'=>0])->orderBy('r.updated_at','DESC');return $this->respond(['success'=>true,'message'=>'My requests','data'=>$builder->get()->getResultArray()]);
     }
+    // Only the user's own assignments - operations_admin_override holders
+    // see everything else waiting on a decision via otherPending().
     public function pending():ResponseInterface
     {
         $user=$this->auth();if(!$user)return $this->unauthorized();
-        // operations_admin_override: same reasoning as Operations::pending()
-        // (web) - an inbox of the user's own assignments would be empty by
-        // default for them, so show every request org-wide actually
-        // waiting on a decision instead.
-        if((new Operations_permissions())->allowed('operations_admin_override',$user)){
-            $rows=$this->db->table($this->p.'oa_requests r')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->join($this->p.'oa_stage_instances i','i.id=r.current_stage_instance_id','left')->where(['r.status'=>'pending_approval','r.deleted'=>0])->orderBy('r.updated_at')->get()->getResultArray();
-        }else{
-            $rows=$this->db->table($this->p.'oa_assignments a')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version,a.id assignment_id')->join($this->p.'oa_stage_instances i','i.id=a.stage_instance_id')->join($this->p.'oa_requests r','r.id=i.request_id')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->where(['a.user_id'=>$user->id,'a.status'=>'pending'])->orderBy('i.due_at')->get()->getResultArray();
-        }
+        $rows=$this->db->table($this->p.'oa_assignments a')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version,a.id assignment_id')->join($this->p.'oa_stage_instances i','i.id=a.stage_instance_id')->join($this->p.'oa_requests r','r.id=i.request_id')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->where(['a.user_id'=>$user->id,'a.status'=>'pending','r.deleted'=>0])->orderBy('i.due_at')->get()->getResultArray();
         return $this->respond(['success'=>true,'message'=>'Approval inbox','data'=>$rows]);
+    }
+    public function otherPending():ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        if(!(new Operations_permissions())->allowed('operations_admin_override',$user))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
+        $uid=(int)$user->id;
+        $rows=$this->db->table($this->p.'oa_requests r')->select('r.id,r.request_no,r.title,r.status,r.priority,r.submitted_at,w.name workflow_name,i.name_snapshot current_stage,i.due_at,i.lock_version')->join($this->p.'oa_workflows w','w.id=r.workflow_id')->join($this->p.'oa_stage_instances i','i.id=r.current_stage_instance_id','left')->where(['r.status'=>'pending_approval','r.deleted'=>0])->where("NOT EXISTS (SELECT 1 FROM {$this->p}oa_assignments ma WHERE ma.stage_instance_id=r.current_stage_instance_id AND ma.user_id=$uid AND ma.status='pending')",null,false)->orderBy('r.updated_at')->get()->getResultArray();
+        return $this->respond(['success'=>true,'message'=>'Other pending requests','data'=>$rows]);
+    }
+    public function revokeApproval(int $id):ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        $reason=trim((string)$this->request->getPost('reason'));if($reason==='')return $this->respond(['success'=>false,'message'=>'A reason is required.'],422);
+        try{(new Workflow_engine())->revokeApproval($id,$user,$reason);return $this->respond(['success'=>true,'message'=>'Approval revoked']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
     }
     public function show($id = null):ResponseInterface
     {
@@ -115,6 +123,7 @@ class Operations_api extends ResourceController
         // hands them a pending assignment on the fly (see decision()).
         $request['can_decide']=(bool)$assignment||((bool)$request['current_stage_instance_id']&&(new Operations_permissions())->allowed('operations_admin_override',$user));
         $request['is_override_decision']=$request['can_decide']&&!$assignment;
+        $request['can_revoke_approval']=(bool)(new Workflow_engine())->revocableApproval($id,(int)$user->id);
         $request['can_resubmit']=(int)$request['requester_id']===(int)$user->id&&$request['status']==='returned';
         if($request['can_resubmit']){
             $resubmitFields=$this->availableFields($this->db->table($this->p.'oa_fields')->select('id,field_key,label,field_type,is_required,config_json')->where('version_id',$request['version_id'])->orderBy('position')->get()->getResultArray());

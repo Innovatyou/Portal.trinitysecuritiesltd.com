@@ -124,6 +124,90 @@ class Workflow_engine
         }
     }
 
+    // The approval $userId gave on this request that they can still take
+    // back, or null. Only their most recent approval qualifies, and only
+    // while nobody has acted on the request since: a later decision on
+    // another stage, an open information request, a return/rejection or
+    // cancellation all mean the mistake has already been built on, so
+    // unwinding it would silently erase someone else's work.
+    public function revocableApproval(int $requestId, int $userId): ?object
+    {
+        $request = $this->db->table($this->p . 'oa_requests')->where(['id' => $requestId, 'deleted' => 0])->get()->getRow();
+        if (!$request || !in_array($request->status, ['pending_approval', 'completed', 'configuration_error'], true)) return null;
+        $decision = $this->db->table($this->p . 'oa_decisions d')->select('d.*, a.source_snapshot, i.status stage_status, i.position, i.lock_version stage_lock_version')
+            ->join($this->p . 'oa_assignments a', 'a.id=d.assignment_id')->join($this->p . 'oa_stage_instances i', 'i.id=d.stage_instance_id')
+            ->where(['d.request_id' => $requestId, 'd.actor_id' => $userId, 'd.decision' => 'approve', 'a.status' => 'approve'])
+            ->orderBy('d.id', 'DESC')->get(1)->getRow();
+        if (!$decision || !in_array($decision->stage_status, ['active', 'overdue', 'approved'], true)) return null;
+        $laterDecisions = $this->db->table($this->p . 'oa_decisions')->where(['request_id' => $requestId, 'stage_instance_id !=' => $decision->stage_instance_id, 'id >' => $decision->id])->countAllResults();
+        if ($laterDecisions) return null;
+        // Still-open stage: the request must still be sitting on it. Closed
+        // (approved) stage: the request has either moved to a later stage
+        // nobody has touched yet, or completed because this was the last one.
+        if ($decision->stage_status !== 'approved' && (int) $request->current_stage_instance_id !== (int) $decision->stage_instance_id) return null;
+        return $decision;
+    }
+
+    public function revokeApproval(int $requestId, object $actor, string $reason): void
+    {
+        if (trim($reason) === '') throw new \InvalidArgumentException('A reason is required.');
+        $this->db->transBegin();
+        try {
+            $request = $this->lockRequest($requestId);
+            $decision = $this->revocableApproval($requestId, (int) $actor->id);
+            if (!$decision) throw new \DomainException('This approval can no longer be revoked - the request has already moved on.');
+            $stageInstanceId = (int) $decision->stage_instance_id;
+            $now = get_current_utc_time();
+            $reset = [];
+            if ($decision->stage_status === 'approved') {
+                // Rewind every stage this approval activated or skipped on
+                // its way forward. revocableApproval() already guaranteed
+                // none of them carries a decision, so their assignments hold
+                // nothing worth keeping - delete rather than cancel in place,
+                // or the (stage_instance_id,user_id) unique key would block
+                // re-assigning the same approver when the stage reopens.
+                $later = $this->db->table($this->p . 'oa_stage_instances')->where(['request_id' => $requestId, 'position >' => (int) $decision->position])
+                    ->groupStart()->whereIn('status', ['active', 'overdue', 'configuration_error'])->orGroupStart()->where('status', 'skipped')->where('completed_at >=', $decision->created_at)->groupEnd()->groupEnd()
+                    ->get()->getResult();
+                foreach ($later as $instance) {
+                    $this->db->table($this->p . 'oa_assignments')->where('stage_instance_id', $instance->id)->delete();
+                    $this->db->table($this->p . 'oa_stage_instances')->where('id', $instance->id)->update(['status' => 'pending', 'activated_at' => null, 'due_at' => null, 'completed_at' => null, 'condition_result_json' => null, 'lock_version' => ((int) $instance->lock_version) + 1]);
+                    $reset[] = (int) $instance->id;
+                }
+                // Co-approvers whose turn was cut short when the threshold
+                // was met get their pending assignment back.
+                $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'status' => 'not_required'])->update(['status' => 'pending', 'acted_at' => null]);
+            }
+            $this->db->table($this->p . 'oa_stage_instances')->where('id', $stageInstanceId)->update(['status' => 'active', 'completed_at' => null, 'lock_version' => ((int) $decision->stage_lock_version) + 1]);
+            // One decision per assignment (unique key), so the original row
+            // has to go for the approver to be able to decide again. The
+            // audit entry below keeps everything it held.
+            $this->db->table($this->p . 'oa_decisions')->where('id', $decision->id)->delete();
+            if ($decision->source_snapshot === 'admin_override') {
+                // They were never on this stage's approver list - drop the
+                // on-the-fly assignment instead of leaving it in their inbox.
+                $this->db->table($this->p . 'oa_assignments')->where('id', $decision->assignment_id)->delete();
+            } else {
+                $this->db->table($this->p . 'oa_assignments')->where('id', $decision->assignment_id)->update(['status' => 'pending', 'acted_at' => null]);
+            }
+            $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'pending_approval', 'current_stage_instance_id' => $stageInstanceId, 'completed_at' => null, 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1]);
+            $this->db->table($this->p . 'oa_comments')->insert(['request_id' => $requestId, 'stage_instance_id' => $stageInstanceId, 'user_id' => $actor->id, 'user_name_snapshot' => trim(($actor->first_name ?? '') . ' ' . ($actor->last_name ?? '')), 'comment' => 'Approval revoked: ' . clean_data($reason), 'comment_type' => 'approval_revoked', 'visibility' => 'workflow', 'created_at' => $now]);
+            $this->audit->record('approval_revoked', $requestId, $stageInstanceId, $actor, ['decision_id' => (int) $decision->id, 'decision' => 'approve', 'comment' => $decision->comment, 'decided_at' => $decision->created_at, 'request_status' => $request->status], ['reset_stage_instance_ids' => $reset], ['reason' => $reason]);
+            $this->db->transCommit();
+            $recipients = array_merge((new Notification_service())->requester($requestId), $this->stageApprovers($stageInstanceId, (int) $actor->id));
+            (new Notification_service())->send('approval_revoked', $requestId, $recipients, $actor, ['comment' => $reason, 'dedupe' => 'revoke-' . $decision->id]);
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+    }
+
+    private function stageApprovers(int $stageInstanceId, int $exceptUserId): array
+    {
+        $rows = $this->db->table($this->p . 'oa_assignments')->select('user_id')->where(['stage_instance_id' => $stageInstanceId, 'status' => 'pending', 'user_id !=' => $exceptUserId])->get()->getResult();
+        return array_map(fn($row) => (int) $row->user_id, $rows);
+    }
+
     // A stage that resolves to zero eligible approvers (no manager/department
     // head assigned, an empty group, self-approval filtered the only
     // candidate out, etc.) deliberately parks the request in

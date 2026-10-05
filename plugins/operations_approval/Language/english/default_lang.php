@@ -192,5 +192,13 @@ $lang['notification_operations_approval_delegated'] = 'delegated an operations a
 $lang['operations_export_pdf'] = 'Export PDF';
 $lang['operations_request_report'] = 'Request report';
 $lang['operations_page_reloaded_by_browser'] = 'Your browser reloaded this page while you were choosing a file, usually because the phone was low on memory. Your details have been restored - please attach the file again. Closing other apps and browser tabs first can help.';
+$lang['operations_other_pending_requests'] = 'Other pending requests';
+$lang['operations_kpi_other_pending'] = 'Other pending requests';
+$lang['operations_revoke_approval'] = 'Revoke my approval';
+$lang['operations_revoke_approval_help'] = 'Approved this by mistake? You can take your approval back until someone else acts on the request. The stage will reopen for a fresh decision.';
+$lang['operations_revoke_approval_reason'] = 'Reason for revoking';
+$lang['operations_revoke_approval_confirm'] = 'Revoke your approval and reopen this stage?';
+$lang['operations_approval_revoked'] = 'Your approval has been revoked and the stage is open again.';
+$lang['notification_operations_approval_revoked'] = 'revoked an approval on an operations request.';
 
 return $lang;

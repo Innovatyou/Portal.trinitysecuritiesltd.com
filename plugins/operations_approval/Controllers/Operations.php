@@ -31,7 +31,6 @@ class Operations extends Security_Controller
 
     public function index()
     {
-        $userId = (int) $this->login_user->id;
         $hasOverride = $this->hasAdminOverride();
         $base = $this->db->table($this->p . 'oa_requests')->where('deleted', 0);
         $data['kpis'] = [
@@ -40,15 +39,11 @@ class Operations extends Security_Controller
             'approved' => $this->visibleRequests(clone $base)->whereIn('status', ['approved', 'completed'])->countAllResults(),
             'rejected' => $this->visibleRequests(clone $base)->where('status', 'rejected')->countAllResults(),
             'returned' => $this->visibleRequests(clone $base)->where('status', 'returned')->countAllResults(),
-            // Matches pending()'s scope below: an admin-override holder's
-            // "Pending my approval" inbox is every request org-wide
-            // waiting on a decision, not just their own assignments (they
-            // have none by default) - the KPI would otherwise read 0 while
-            // the card it links to shows plenty.
-            'my_pending' => $hasOverride
-                ? $this->db->table($this->p . 'oa_requests')->where(['status' => 'pending_approval', 'deleted' => 0])->countAllResults()
-                : $this->db->table($this->p . 'oa_assignments')->where(['user_id' => $userId, 'status' => 'pending'])->countAllResults()
+            'my_pending' => $this->myPendingQuery()->countAllResults(),
         ];
+        // Override holders can decide anything, but only what they're
+        // actually assigned counts as "theirs" - the rest is its own card.
+        if ($hasOverride) $data['kpis']['other_pending'] = $this->otherPendingQuery()->countAllResults();
         // The KPI cards weren't clickable at all before - link each one to
         // the list it's actually counting. "Total"/status ones go wherever
         // the KPI count itself is scoped (requests() if the user can see
@@ -63,6 +58,7 @@ class Operations extends Security_Controller
             'rejected' => get_uri($listUri) . '?status=rejected',
             'returned' => get_uri($listUri) . '?status=returned',
             'my_pending' => get_uri('operations/pending'),
+            'other_pending' => get_uri('operations/other_pending'),
         ];
         // visibleRequests() used to only ever show requests the user created
         // themselves (or everyone's, with operations_view_all_requests) - an
@@ -100,20 +96,35 @@ class Operations extends Security_Controller
         if ($statuses) $builder->whereIn($column, $statuses);
     }
 
+    // Only requests where the user is a genuinely assigned approver -
+    // operations_admin_override no longer floods this inbox with the
+    // whole organisation's queue; that lives in other_pending() instead.
     public function pending()
     {
-        // operations_admin_override: rather than an inbox of the user's
-        // own assignments (they hold none by default), show every request
-        // org-wide that's actually waiting on a decision - this is what
-        // makes "approve even when not on the approval list" practically
-        // usable, versus only working when they already have a direct
-        // link to the request.
-        if ($this->hasAdminOverride()) {
-            $rows = $this->db->table($this->p . 'oa_requests r')->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->join($this->p . 'oa_stage_instances i', 'i.id=r.current_stage_instance_id', 'left')->where(['r.status' => 'pending_approval', 'r.deleted' => 0])->orderBy('r.updated_at')->get()->getResult();
-        } else {
-            $rows = $this->db->table($this->p . 'oa_assignments a')->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_stage_instances i', 'i.id=a.stage_instance_id')->join($this->p . 'oa_requests r', 'r.id=i.request_id')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->where(['a.user_id' => $this->login_user->id, 'a.status' => 'pending'])->orderBy('a.assigned_at')->get()->getResult();
-        }
+        $rows = $this->myPendingQuery()->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->orderBy('a.assigned_at')->get()->getResult();
         return $this->template->rander('operations_approval\Views\operations\request_list', ['rows' => $rows, 'title' => app_lang('operations_pending_my_approval')]);
+    }
+
+    // operations_admin_override: every request waiting on a decision that
+    // ISN'T assigned to the user - they can still open and decide any of
+    // them (see decide()), it just isn't presented as their own work.
+    public function other_pending()
+    {
+        if (!$this->hasAdminOverride()) app_redirect('forbidden');
+        $rows = $this->otherPendingQuery()->select('r.*, w.name workflow_name, i.name_snapshot stage_name')->join($this->p . 'oa_workflows w', 'w.id=r.workflow_id')->orderBy('r.updated_at')->get()->getResult();
+        return $this->template->rander('operations_approval\Views\operations\request_list', ['rows' => $rows, 'title' => app_lang('operations_other_pending_requests')]);
+    }
+
+    private function myPendingQuery()
+    {
+        return $this->db->table($this->p . 'oa_assignments a')->join($this->p . 'oa_stage_instances i', 'i.id=a.stage_instance_id')->join($this->p . 'oa_requests r', 'r.id=i.request_id')->where(['a.user_id' => (int) $this->login_user->id, 'a.status' => 'pending', 'r.deleted' => 0]);
+    }
+
+    private function otherPendingQuery()
+    {
+        $userId = (int) $this->login_user->id;
+        return $this->db->table($this->p . 'oa_requests r')->join($this->p . 'oa_stage_instances i', 'i.id=r.current_stage_instance_id', 'left')->where(['r.status' => 'pending_approval', 'r.deleted' => 0])
+            ->where("NOT EXISTS (SELECT 1 FROM {$this->p}oa_assignments ma WHERE ma.stage_instance_id=r.current_stage_instance_id AND ma.user_id=$userId AND ma.status='pending')", null, false);
     }
 
     private function hasAdminOverride(): bool
@@ -251,6 +262,7 @@ class Operations extends Security_Controller
         $data['can_delete'] = $this->canDelete($request);
         $data['can_retry_configuration'] = $this->permissions->allowed('operations_manage_workflows', $this->login_user);
         $data['can_reorder_stages'] = $this->hasAdminOverride();
+        $data['revocable_approval'] = (new Workflow_engine())->revocableApproval($id, (int) $this->login_user->id);
         return $this->template->rander('operations_approval\Views\operations\view', $data);
     }
 
@@ -549,6 +561,22 @@ class Operations extends Security_Controller
             echo json_encode(['success' => true, 'message' => app_lang('operations_decision_recorded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) {
             log_message('warning', 'Operations decision rejected: {message}', ['message' => $e->getMessage()]);
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    // Lets an approver take back their own approval after a mistake, as
+    // long as nobody has acted on the request since (see
+    // Workflow_engine::revocableApproval()).
+    public function revoke_approval(int $id)
+    {
+        $this->getRequest($id);
+        $this->validate_submitted_data(['reason' => 'required']);
+        try {
+            (new Workflow_engine())->revokeApproval($id, $this->login_user, trim((string) $this->request->getPost('reason')));
+            echo json_encode(['success' => true, 'message' => app_lang('operations_approval_revoked'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+        } catch (\Throwable $e) {
+            log_message('warning', 'Operations approval revoke rejected: {message}', ['message' => $e->getMessage()]);
             $this->jsonError($e->getMessage());
         }
     }

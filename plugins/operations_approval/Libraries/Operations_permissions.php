@@ -38,6 +38,9 @@ class Operations_permissions
         if ($this->allowed('operations_create_request', $user)) {
             array_splice($sub, 1, 0, [[ 'name' => 'operations_new_request', 'url' => 'operations/new_request', 'class' => 'plus-circle' ]]);
         }
+        if ($this->allowed('operations_admin_override', $user)) {
+            $sub[] = ['name' => 'operations_other_pending_requests', 'url' => 'operations/other_pending', 'class' => 'inbox'];
+        }
         if ($this->allowed('operations_view_all_requests', $user)) {
             $sub[] = ['name' => 'operations_requests', 'url' => 'operations/requests', 'class' => 'list'];
         }

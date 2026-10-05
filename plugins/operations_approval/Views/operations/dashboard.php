@@ -6,7 +6,7 @@ $statusClass = static function ($status) {
     if (in_array($status, ['returned', 'cancelled'], true)) return 'warning';
     return 'info';
 };
-$kpiIcons = ['total' => 'layers', 'pending' => 'clock', 'approved' => 'check-circle', 'rejected' => 'x-circle', 'returned' => 'corner-up-left', 'my_pending' => 'user-check'];
+$kpiIcons = ['total' => 'layers', 'pending' => 'clock', 'approved' => 'check-circle', 'rejected' => 'x-circle', 'returned' => 'corner-up-left', 'my_pending' => 'user-check', 'other_pending' => 'inbox'];
 ?>
 <div class="oa-page">
 <section class="oa-hero"><div class="oa-hero-copy"><div class="oa-hero-eyebrow">WORKFLOW CONTROL CENTRE</div><h1><?php echo app_lang('operations_dashboard'); ?></h1><p>Track requests, approvals and decisions from one secure workspace.</p></div><div class="oa-hero-actions"><?php echo anchor(get_uri('operations/new_request'), '<i data-feather="plus-circle" class="icon-16"></i> ' . app_lang('operations_new_request'), ['class' => 'btn btn-primary']); ?></div></section>

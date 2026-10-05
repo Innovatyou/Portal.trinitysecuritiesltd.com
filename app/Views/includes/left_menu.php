@@ -161,8 +161,12 @@
         // with a short grace period instead of relying purely on :hover,
         // the standard fix for this class of flyout menu.
         var flyoutCloseTimer = null;
+        // Desktop only: on phones .sidebar-toggled means the full-screen
+        // menu is open (no flyouts), and a tap fires mouseenter too.
+        var isDesktopSidebar = function() { return window.matchMedia('(min-width: 991px)').matches; };
         $(document).on('mouseenter', '.sidebar-toggled .sidebar-menu > li.main', function() {
             clearTimeout(flyoutCloseTimer);
+            if (!isDesktopSidebar()) return;
             $(this).addClass('js-flyout-open');
         }).on('mouseleave', '.sidebar-toggled .sidebar-menu > li.main', function() {
             var $li = $(this);

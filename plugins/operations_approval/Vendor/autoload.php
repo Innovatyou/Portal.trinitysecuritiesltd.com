@@ -30,3 +30,16 @@ spl_autoload_register(function ($class) {
         require_once $file;
     }
 });
+
+// firebase/php-jwt (BSD-3, see firebase/php-jwt/LICENSE), vendored so the
+// mobile API no longer needs the CustomersApi plugin's copy.
+spl_autoload_register(function ($class) {
+    $prefix = 'Firebase\\JWT\\';
+    if (strpos($class, $prefix) !== 0) {
+        return;
+    }
+    $file = __DIR__ . '/firebase/php-jwt/src/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+    if (is_file($file)) {
+        require_once $file;
+    }
+});

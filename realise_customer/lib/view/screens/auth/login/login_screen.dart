@@ -35,8 +35,9 @@ class _LoginScreenState extends State<LoginScreen> {
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // initData() restores a remembered email/password and re-ticks
+      // "Remember me" - don't reset it here afterwards.
       Get.find<LoginController>().initData();
-      Get.find<LoginController>().remember = false;
     });
   }
 

@@ -36,6 +36,7 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
       if (detail.canResubmit) _resubmit(controller, detail),
       TextField(controller: comment, maxLines: 3, decoration: InputDecoration(labelText: 'Add a comment', suffixIcon: IconButton(icon: const Icon(Icons.send), onPressed: () { controller.addComment(comment.text); comment.clear(); }))),
       if (detail.canDecide) _decisions(controller, detail),
+      if (detail.canRevokeApproval) _revoke(controller),
       if (detail.canCancel) _cancel(controller),
       if (detail.canDelete) _delete(controller),
     ]);
@@ -164,6 +165,34 @@ class _OperationsDetailState extends State<OperationsDetailScreen> {
     if (signed == true) {
       controller.decide('approve', note.text);
     }
+  }
+
+  Widget _revoke(OperationsController controller) => DepthCard(accent: Colors.deepOrange, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Approved by mistake?', style: TextStyle(fontWeight: FontWeight.w900)),
+    const SizedBox(height: 6),
+    const Text('You can take your approval back until someone else acts on this request. The stage reopens for a fresh decision.'),
+    const SizedBox(height: 8),
+    Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(
+      onPressed: controller.submitting ? null : () => _confirmRevoke(context, controller),
+      icon: const Icon(Icons.undo, color: Colors.deepOrange),
+      label: const Text('Revoke my approval', style: TextStyle(color: Colors.deepOrange)),
+    )),
+  ]));
+
+  void _confirmRevoke(BuildContext context, OperationsController controller) {
+    final reason = TextEditingController();
+    showDialog(context: context, builder: (_) => AlertDialog(
+      title: const Text('Revoke your approval?'),
+      content: TextField(controller: reason, autofocus: true, maxLines: 2, decoration: const InputDecoration(hintText: 'Reason for revoking')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Keep it')),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: Colors.deepOrange),
+          onPressed: () { if (reason.text.trim().isEmpty) return; Navigator.pop(context); controller.revokeApproval(reason.text); },
+          child: const Text('Revoke'),
+        ),
+      ],
+    ));
   }
 
   Widget _cancel(OperationsController controller) => Align(

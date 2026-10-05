@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:realise/core/helper/biometric_auth_helper.dart';
 import 'package:realise/core/utils/local_strings.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:realise/core/helper/shared_preference_helper.dart';
 import 'package:realise/core/route/route.dart';
@@ -28,7 +29,41 @@ class LoginController extends GetxController {
 
   LoginController({required this.loginRepo});
 
+  // "Remember me" also keeps the sign-in details so the form comes back
+  // filled in. The password lives in the Android Keystore-backed secure
+  // storage, never in plain SharedPreferences.
+  static const _savedEmailKey = 'saved_login_email';
+  static const _savedPasswordKey = 'saved_login_password';
+  static const _secureStorage = FlutterSecureStorage();
+
+  Future<void> _saveCredentials() async {
+    try {
+      if (remember) {
+        await loginRepo.apiClient.sharedPreferences.setString(_savedEmailKey, emailController.text.trim());
+        await _secureStorage.write(key: _savedPasswordKey, value: passwordController.text);
+      } else {
+        await loginRepo.apiClient.sharedPreferences.remove(_savedEmailKey);
+        await _secureStorage.delete(key: _savedPasswordKey);
+      }
+    } catch (_) {
+      // Secure storage can fail on a few devices (e.g. a reset keystore) -
+      // never let that block the sign-in itself.
+    }
+  }
+
+  Future<void> _restoreCredentials() async {
+    final savedEmail = loginRepo.apiClient.sharedPreferences.getString(_savedEmailKey) ?? '';
+    if (savedEmail.isEmpty) return;
+    emailController.text = savedEmail;
+    try {
+      passwordController.text = await _secureStorage.read(key: _savedPasswordKey) ?? '';
+    } catch (_) {}
+    remember = true;
+    update();
+  }
+
   Future<void> checkAndGotoNextStep(LoginModel responseModel) async {
+    await _saveCredentials();
     if (remember) {
       await loginRepo.apiClient.sharedPreferences
           .setBool(SharedPreferenceHelper.rememberMeKey, true);
@@ -61,10 +96,6 @@ class LoginController extends GetxController {
         SharedPreferenceHelper.userTypeKey, responseModel.data?.userType ?? '');
 
     Get.offAndToNamed(RouteHelper.dashboardScreen);
-
-    if (remember) {
-      changeRememberMe();
-    }
   }
 
   bool isSubmitLoading = false;
@@ -104,6 +135,7 @@ class LoginController extends GetxController {
     isLoading = false;
     update();
 
+    await _restoreCredentials();
     await checkBiometricAvailability();
   }
 

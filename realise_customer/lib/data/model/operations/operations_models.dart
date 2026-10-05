@@ -18,6 +18,7 @@ class OperationsDetail {
   OperationsDetail(this.raw);
   OperationsRequest get request=>OperationsRequest.fromJson(raw);
   bool get canDecide=>raw['can_decide']==true;
+  bool get canRevokeApproval=>raw['can_revoke_approval']==true;
   bool get canResubmit=>raw['can_resubmit']==true;
   bool get canCancel=>raw['can_cancel']==true;
   bool get canDelete=>raw['can_delete']==true;

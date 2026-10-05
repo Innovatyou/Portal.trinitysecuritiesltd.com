@@ -43,6 +43,10 @@ class OperationsRepo {
  Future<ResponseModel> dashboard()=>api.request(base,Method.getMethod,null,passHeader:true);
  Future<ResponseModel> requests()=>api.request('$base/requests',Method.getMethod,null,passHeader:true);
  Future<ResponseModel> pending()=>api.request('$base/pending',Method.getMethod,null,passHeader:true);
+ /// Override holders only - everything waiting on a decision that isn't
+ /// assigned to this user. Everyone else gets a 403.
+ Future<ResponseModel> otherPending()=>api.request('$base/pending/others',Method.getMethod,null,passHeader:true);
+ Future<ResponseModel> revokeApproval(int id,String reason)=>api.request('$base/requests/$id/revoke-approval',Method.postMethod,{'reason':reason},passHeader:true);
  Future<ResponseModel> workflows()=>api.request('$base/workflows',Method.getMethod,null,passHeader:true);
  Future<ResponseModel> detail(int id)=>api.request('$base/requests/$id',Method.getMethod,null,passHeader:true);
  Future<ResponseModel> create(Map<String,dynamic> data)=>api.request('$base/requests',Method.postMethod,data,passHeader:true);

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:realise/core/route/route.dart';
 import 'package:realise/core/utils/color_resources.dart';
 import 'package:realise/data/controller/operations/operations_controller.dart';
+import 'package:realise/data/model/operations/operations_models.dart';
 import 'package:realise/data/repo/operations/operations_repo.dart';
 import 'package:realise/data/services/api_service.dart';
 import 'package:realise/view/components/operations/depth_card.dart';
@@ -56,14 +57,25 @@ class _OperationsState extends State<OperationsScreen> {
             _metric('Returned', state.stats['returned'], Colors.purple, () => goTo(1, 'returned')),
           ]),
         ] else Row(children: [
-          Expanded(child: Text(tab == 1 ? (statusFilter == null ? 'My requests' : 'My requests — ${statusFilter![0].toUpperCase()}${statusFilter!.substring(1)}') : 'Approval inbox', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900))),
+          Expanded(child: Text(tab == 1 ? (statusFilter == null ? 'My requests' : 'My requests — ${statusFilter![0].toUpperCase()}${statusFilter!.substring(1)}') : 'Assigned to me', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900))),
           if (statusFilter != null) TextButton(onPressed: () => setState(() => statusFilter = null), child: const Text('Clear filter')),
         ]),
         const SizedBox(height: 12),
         if (tab != 0 && items.isEmpty) const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: Text('Nothing here.', style: TextStyle(color: Colors.black45)))),
-        ...items.take(tab == 0 ? 4 : items.length).map((r) => DepthCard(accent: ColorResources.primaryColor, onTap: () => Get.toNamed(RouteHelper.operationsDetailScreen, arguments: r.id), child: ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.description, color: ColorResources.primaryColor), title: Text(r.title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${r.number} | ${r.workflow}'), trailing: const Icon(Icons.chevron_right)))),
+        ...items.take(tab == 0 ? 4 : items.length).map(_requestCard),
+        // Override holders can decide anything, but only their own
+        // assignments count as "awaiting me" - the rest is listed apart.
+        if (tab == 2 && state.canSeeOthers) ...[
+          const SizedBox(height: 24),
+          const Text('Other pending requests', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+          const Text('Not assigned to you - open one to decide it as an override.', style: TextStyle(color: Colors.black54)),
+          const SizedBox(height: 12),
+          if (state.others.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Center(child: Text('Nothing here.', style: TextStyle(color: Colors.black45)))),
+          ...state.others.map(_requestCard),
+        ],
       ]));
     }),
   );
+  Widget _requestCard(OperationsRequest r) => DepthCard(accent: ColorResources.primaryColor, onTap: () => Get.toNamed(RouteHelper.operationsDetailScreen, arguments: r.id), child: ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.description, color: ColorResources.primaryColor), title: Text(r.title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text('${r.number} | ${r.workflow}'), trailing: const Icon(Icons.chevron_right)));
   Widget _metric(String label, dynamic value, Color color, VoidCallback onTap) => DepthCard(accent: color, onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.auto_awesome, color: color), const Spacer(), Text('${value ?? 0}', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900)), Text(label, style: const TextStyle(fontSize: 11))]));
 }

@@ -133,6 +133,18 @@ $routes->post('operations_settings/save', '\operations_approval\Controllers\Oper
 $routes->post('operations_settings/save_department', '\operations_approval\Controllers\Operations_settings::save_department', ['filter' => 'csrf']);
 $routes->post('operations_settings/save_delegation', '\operations_approval\Controllers\Operations_settings::save_delegation', ['filter' => 'csrf']);
 $routes->post('customersapi/operations-login', '\operations_approval\Controllers\Operations_api::login');
+// App-shell endpoints formerly served by the licensed CustomersApi plugin.
+// Registered here (pre_system, before plugin route discovery) so these win
+// whether that plugin is installed or not.
+$routes->get('customersapi/overview', '\operations_approval\Controllers\Operations_api::overview');
+$routes->get('customersapi/dashboard', '\operations_approval\Controllers\Operations_api::shellDashboard');
+$routes->get('customersapi/profile', '\operations_approval\Controllers\Operations_api::profile');
+$routes->get('customersapi/privacy-policy', '\operations_approval\Controllers\Operations_api::privacyPolicy');
+$routes->post('customersapi/forget-password', '\operations_approval\Controllers\Operations_api::forgetPassword');
+$routes->get('customersapi/messages/conversations', '\operations_approval\Controllers\Mobile_messages::conversations');
+$routes->get('customersapi/messages/contacts', '\operations_approval\Controllers\Mobile_messages::contacts');
+$routes->get('customersapi/messages/thread/(:num)', '\operations_approval\Controllers\Mobile_messages::thread/$1');
+$routes->post('customersapi/messages/send', '\operations_approval\Controllers\Mobile_messages::send');
 $routes->get('customersapi/operations', '\operations_approval\Controllers\Operations_api::dashboard');
 $routes->post('customersapi/profile/avatar', '\operations_approval\Controllers\Operations_api::avatar');
 $routes->get('customersapi/operations/workflows', '\operations_approval\Controllers\Operations_api::workflows');

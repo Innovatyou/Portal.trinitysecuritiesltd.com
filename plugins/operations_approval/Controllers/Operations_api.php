@@ -20,6 +20,13 @@ class Operations_api extends ResourceController
     private $db; private $p; private $secret; private $users;
     public function __construct()
     {
+        // app_lang(), get_setting(), clean_data() etc. live in helpers that
+        // App_Controller loads for normal pages - this is a plain
+        // ResourceController, which only had them because the CustomersApi
+        // plugin's pre_system event happened to load them too. With that
+        // plugin deactivated, login() 500'd (empty body) on the undefined
+        // app_lang(). Load them here rather than depend on another plugin.
+        helper(['general', 'language', 'url', 'date_time']);
         $this->db=db_connect('default');$this->p=$this->db->getPrefix();$this->users=new Users_model();
         // This controller extends ResourceController, not App_Controller, so
         // none of the app_settings_array population App_Controller normally

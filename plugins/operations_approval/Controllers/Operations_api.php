@@ -39,9 +39,8 @@ class Operations_api extends ResourceController
         $coreSettings=(new \App\Models\Settings_model())->get_all_required_settings(0)->getResult();
         foreach($coreSettings as $coreSetting)config('Rise')->app_settings_array[$coreSetting->setting_name]=$coreSetting->setting_value;
         if($this->db->tableExists($this->p.'oa_settings')){$mobileSetting=$this->db->table($this->p.'oa_settings')->select('setting_value')->where('setting_key','mobile_app_enabled')->get()->getRow();if($mobileSetting&&(string)$mobileSetting->setting_value!=='1'){response()->setStatusCode(ResponseInterface::HTTP_SERVICE_UNAVAILABLE)->setJSON(['success'=>false,'message'=>'The mobile app is currently disabled by an administrator.'])->send();exit;}$operationsSetting=$this->db->table($this->p.'oa_settings')->select('setting_value')->where('setting_key','mobile_module_operations')->get()->getRow();if($operationsSetting&&(string)$operationsSetting->setting_value!=='1'){response()->setStatusCode(ResponseInterface::HTTP_SERVICE_UNAVAILABLE)->setJSON(['success'=>false,'message'=>'Operations workflows are disabled in the mobile app.'])->send();exit;}}
-        $secretRow=$this->db->table($this->p.'settings')->select('setting_value')->where(['setting_name'=>'customersapi_secret_key','deleted'=>0])->get()->getRow();
-        $this->secret=(string)($secretRow->setting_value??'');
-        $autoload=PLUGINPATH.'CustomersApi/Vendor/autoload.php';if(is_file($autoload))require_once $autoload;
+        require_once __DIR__.'/../Vendor/autoload.php';
+        $this->secret=\operations_approval\Libraries\Mobile_token_secret::get();
     }
     public function login():ResponseInterface
     {
@@ -51,6 +50,78 @@ class Operations_api extends ResourceController
         if(!$this->secret||!class_exists(JWT::class))return $this->respond(['success'=>false,'message'=>'Mobile API is not configured.'],503);
         $token=JWT::encode(['iat'=>time(),'exp'=>time()+86400,'data'=>['email'=>$user->email,'user_id'=>(int)$user->id,'user_type'=>$user->user_type]],$this->secret,'HS256');
         return $this->respond(['success'=>true,'message'=>app_lang('data_retrieved_successfully'),'data'=>['token'=>$token,'id'=>(int)$user->id,'first_name'=>$user->first_name,'last_name'=>$user->last_name,'email'=>$user->email,'job_title'=>$user->job_title,'user_type'=>$user->user_type,'avatar'=>(unserialize($user->image?:'a:0:{}')['file_name']??'')]]);
+    }
+    // ---- App-shell endpoints the mobile app used to get from the
+    // CustomersApi plugin (overview, dashboard, profile, privacy policy,
+    // forgot password). Routed here first (see index.php) so the app keeps
+    // working whether or not that licensed plugin is installed.
+    public function overview():ResponseInterface
+    {
+        $logo=get_setting('site_logo');$file=@unserialize((string)$logo);
+        return $this->respond(['success'=>true,'message'=>app_lang('data_retrieved_successfully'),'data'=>[
+            'app_title'=>get_setting('app_title'),'app_logo'=>is_array($file)?($file['file_name']??''):$logo,'language'=>get_setting('language'),
+            'currency_symbol'=>get_setting('currency_symbol'),'default_currency'=>get_setting('default_currency'),'currency_position'=>get_setting('currency_position'),
+            'disable_login'=>get_setting('disable_client_login')?:'0','disable_registration'=>get_setting('disable_client_signup')?:'0',
+            'client_can_view_tasks'=>get_setting('client_can_view_tasks')?:'0','client_can_create_tasks'=>get_setting('client_can_create_tasks')?:'0',
+            'client_can_edit_tasks'=>get_setting('client_can_edit_tasks')?:'0','client_can_comment_on_tasks'=>get_setting('client_can_comment_on_tasks')?:'0',
+            'client_can_view_overview'=>get_setting('client_can_view_overview')?:'0',
+        ]]);
+    }
+    public function shellDashboard():ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        $modules=$this->mobileModules();
+        $permissions=$modules['operations']?['operations']:[];
+        // Client modules (projects, invoices...) are still served by the
+        // CustomersApi plugin - only offer them while its routes exist.
+        $clientApi=isset(service('routes')->getRoutes('get')['customersapi/projects']);
+        if($clientApi&&$user->user_type==='client'){$granted=explode(',',(string)$user->client_permissions);foreach($modules as $module=>$on){if($module!=='operations'&&$on&&(in_array('all',$granted,true)||in_array($module,$granted,true)))$permissions[]=$module;}}
+        return $this->respond(['success'=>true,'message'=>app_lang('data_retrieved_successfully'),'data'=>[
+            'widgets'=>['project_count'=>0,'total_invoiced'=>0,'payments'=>0,'due'=>0],'client'=>$this->profileData($user),
+            'permissions'=>$permissions,'projects'=>[],'mobile_modules'=>$modules,
+        ]]);
+    }
+    public function profile():ResponseInterface
+    {
+        $user=$this->auth();if(!$user)return $this->unauthorized();
+        return $this->respond(['success'=>true,'message'=>app_lang('data_retrieved_successfully'),'data'=>$this->profileData($user)]);
+    }
+    public function privacyPolicy():ResponseInterface
+    {
+        return $this->respond(['success'=>true,'message'=>app_lang('data_retrieved_successfully'),'data'=>['content'=>get_setting('privacy_policy_content')?:'']]);
+    }
+    // Same reset email and link as the web "Forgot password" page.
+    public function forgetPassword():ResponseInterface
+    {
+        $email=trim((string)$this->request->getPost('email'));
+        if(!filter_var($email,FILTER_VALIDATE_EMAIL))return $this->respond(['success'=>false,'message'=>'Enter a valid email address.'],422);
+        $user=$this->users->is_email_exists($email);
+        if(!$user)return $this->respond(['success'=>false,'message'=>app_lang('no_acount_found_with_this_email')]);
+        $template=(new \App\Models\Email_templates_model())->get_final_template('reset_password',true);
+        $lang=$user->language;
+        $verification=new \App\Models\Verification_model();
+        $saveId=$verification->ci_save(['type'=>'reset_password','code'=>make_random_string(),'params'=>serialize(['email'=>$user->email,'expire_time'=>time()+86400])]);
+        $parser=\Config\Services::parser()->setData([
+            'ACCOUNT_HOLDER_NAME'=>$user->first_name.' '.$user->last_name,'SIGNATURE'=>get_array_value($template,"signature_$lang")?:get_array_value($template,'signature_default'),
+            'LOGO_URL'=>get_logo_url(),'SITE_URL'=>get_uri(),'RECIPIENTS_EMAIL_ADDRESS'=>$user->email,'RESET_PASSWORD_URL'=>get_uri('signin/new_password/'.$verification->get_one($saveId)->code),
+        ]);
+        $message=$parser->renderString(get_array_value($template,"message_$lang")?:get_array_value($template,'message_default'));
+        $subject=$parser->renderString(get_array_value($template,"subject_$lang")?:get_array_value($template,'subject_default'));
+        return send_app_mail($email,$subject,$message)?$this->respond(['success'=>true,'message'=>app_lang('reset_info_send')]):$this->respond(['success'=>false,'message'=>app_lang('error_occurred')]);
+    }
+    private function profileData(object $user):array
+    {
+        $client=$user->client_id?$this->db->table($this->p.'clients')->where('id',$user->client_id)->get()->getRow():null;$image=@unserialize((string)$user->image);
+        return ['id'=>(int)($client->id??$user->id),'company_name'=>$client->company_name??'','first_name'=>$user->first_name,'last_name'=>$user->last_name,'type'=>$client->type??'','address'=>$client->address??($user->address??''),
+            'email'=>$user->email,'phone'=>$user->phone??'','job_title'=>$user->job_title??'','gender'=>$user->gender??'','note'=>$user->note??'','alternative_phone'=>$user->alternative_phone??'','dob'=>$user->dob??'',
+            'avatar'=>is_array($image)?($image['file_name']??''):''];
+    }
+    private function mobileModules():array
+    {
+        $modules=array_fill_keys(['operations','projects','contracts','proposals','estimates','invoices','payments','tickets'],true);
+        if(!$this->db->tableExists($this->p.'oa_settings'))return $modules;
+        foreach($this->db->table($this->p.'oa_settings')->select('setting_key,setting_value')->like('setting_key','mobile_module_','after')->get()->getResult() as $row){$key=substr($row->setting_key,14);if(isset($modules[$key]))$modules[$key]=(string)$row->setting_value==='1';}
+        return $modules;
     }
     public function dashboard():ResponseInterface
     {

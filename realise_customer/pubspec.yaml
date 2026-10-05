@@ -35,6 +35,7 @@ dependencies:
   local_auth: ^2.3.0
   signature: ^5.5.0
   pdfx: ^2.9.1
+  flutter_secure_storage: ^10.3.4
 
 dev_dependencies:
   flutter_test:

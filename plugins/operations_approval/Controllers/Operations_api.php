@@ -112,7 +112,7 @@ class Operations_api extends ResourceController
     private function profileData(object $user):array
     {
         $client=$user->client_id?$this->db->table($this->p.'clients')->where('id',$user->client_id)->get()->getRow():null;$image=@unserialize((string)$user->image);
-        return ['id'=>(int)($client->id??$user->id),'company_name'=>$client->company_name??'','first_name'=>$user->first_name,'last_name'=>$user->last_name,'type'=>$client->type??'','address'=>$client->address??($user->address??''),
+        return ['id'=>(string)($client->id??$user->id),'company_name'=>$client->company_name??'','first_name'=>$user->first_name,'last_name'=>$user->last_name,'type'=>$client->type??'','address'=>$client->address??($user->address??''),
             'email'=>$user->email,'phone'=>$user->phone??'','job_title'=>$user->job_title??'','gender'=>$user->gender??'','note'=>$user->note??'','alternative_phone'=>$user->alternative_phone??'','dob'=>$user->dob??'',
             'avatar'=>is_array($image)?($image['file_name']??''):''];
     }

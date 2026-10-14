@@ -621,7 +621,11 @@ function toggleLeftMenu(keyPressed) {
     if (keyPressed) {
         $("body").toggleClass('sidebar-toggled');
 
-        if (!isMobile()) {
+        // Only remember "minimized" where that mode exists (app.all.css's
+        // min-width: 991px). Below it the same class means "menu open", and
+        // isMobile()'s 800px cut-off let 801-990px screens save it, so the
+        // menu reopened on every page.
+        if (window.matchMedia("(min-width: 991px)").matches) {
             if ($("body").hasClass('sidebar-toggled')) {
                 //minimized
                 setCookie("left_menu_minimized", "1");

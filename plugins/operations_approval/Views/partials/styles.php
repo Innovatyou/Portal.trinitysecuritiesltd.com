@@ -41,4 +41,43 @@
 .oa-kpi-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:16px;margin-bottom:22px}.oa-kpi{position:relative;overflow:hidden;min-height:145px;padding:19px;border:1px solid rgba(255,255,255,.9);border-radius:20px;background:linear-gradient(145deg,#fff,#f4f8fb);box-shadow:var(--oa-shadow);transition:.25s}.oa-kpi:hover{transform:translateY(-6px) rotateX(2deg);box-shadow:0 24px 48px rgba(7,27,53,.15)}.oa-kpi:after{content:"";position:absolute;width:80px;height:80px;right:-36px;bottom:-38px;border-radius:50%;background:var(--kpi-bg,#edf7cf)}.oa-kpi-icon{display:grid;place-items:center;width:43px;height:43px;margin-bottom:14px;border-radius:13px;color:var(--kpi-color,var(--oa-navy));background:var(--kpi-bg,#edf7cf);box-shadow:inset 0 1px rgba(255,255,255,.8),0 8px 16px rgba(7,27,53,.08)}.oa-kpi-value{color:var(--oa-navy);font-size:30px;font-weight:900;line-height:1}.oa-kpi-label{margin-top:8px;color:var(--oa-muted);font-size:12px;font-weight:700;line-height:1.35}.oa-kpi:nth-child(2){--kpi-color:#b45309;--kpi-bg:#fef3c7}.oa-kpi:nth-child(3){--kpi-color:#047857;--kpi-bg:#d1fae5}.oa-kpi:nth-child(4){--kpi-color:#be123c;--kpi-bg:#ffe4e6}.oa-kpi:nth-child(5){--kpi-color:#7c3aed;--kpi-bg:#ede9fe}.oa-kpi:nth-child(6){--kpi-color:#0369a1;--kpi-bg:#e0f2fe}
 .oa-section-title{display:flex;align-items:center;justify-content:space-between;gap:14px}.oa-section-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;color:#74a900;background:#effbcf}.oa-option-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.oa-option-grid label{padding:13px;border:1px solid var(--oa-border);border-radius:12px;background:#f8fbfd}.oa-page .vertical-timeline .border-start{position:relative;padding:0 0 24px 28px!important;border-color:#dbe6ec!important}.oa-page .vertical-timeline .border-start:before{content:"";position:absolute;left:-7px;top:2px;width:13px;height:13px;border-radius:50%;background:var(--oa-lime);box-shadow:0 0 0 5px #effbcf}
 @media(max-width:1199px){.oa-kpi-grid{grid-template-columns:repeat(3,1fr)}.oa-option-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:767px){.oa-page{padding:14px}.oa-hero{align-items:flex-start;flex-direction:column;padding:24px 20px;border-radius:18px}.oa-hero-actions,.oa-hero-actions .btn{width:100%}.oa-kpi-grid{grid-template-columns:repeat(2,1fr);gap:11px}.oa-kpi{min-height:130px;padding:15px}.oa-page .card{border-radius:16px}.oa-page .card-body{padding:17px}.oa-page .page-title{align-items:flex-start;flex-direction:column}.oa-page .title-button-group,.oa-page .title-button-group .btn{width:100%}.oa-page .table{min-width:720px}.oa-option-grid{grid-template-columns:1fr}.oa-page .row>[class*=col]{margin-bottom:10px}}@media(max-width:390px){.oa-kpi-grid{grid-template-columns:1fr}.oa-kpi{min-height:auto}}
+/* Phones: list tables (request lists, recent requests, workflows, reports)
+   were 720px+ wide inside a sideways-scrolling box, and on touch screens the
+   page's own scroll handling swallowed the sideways swipe - the columns past
+   the screen edge (workflow, status, date...) could not be reached. Show each
+   row as a stacked card instead, every value labelled with its column name
+   (data-label, filled in by the script below). */
+@media(max-width:767px){
+.oa-page table.oa-stack{min-width:0!important;width:100%!important}
+.oa-page table.oa-stack thead{display:none}
+.oa-page table.oa-stack,.oa-page table.oa-stack tbody{display:block}
+.oa-page table.oa-stack tbody tr{display:block;margin:10px 12px;padding:6px 0;border:1px solid #edf2f6;border-radius:14px;background:#fff}
+.oa-page table.oa-stack tbody td{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 14px!important;border:0!important;text-align:right;overflow-wrap:anywhere}
+.oa-page table.oa-stack tbody td:before{content:attr(data-label);flex:0 0 38%;text-align:left;color:#607086;font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase}
+.oa-page table.oa-stack tbody td:not([data-label]):before,.oa-page table.oa-stack tbody td[data-label=""]:before{display:none}
+.oa-page table.oa-stack tbody td[colspan]{justify-content:center;text-align:center}
+.oa-page .table-responsive:has(table.oa-stack){overflow:visible}
+}
+.oa-page .table-responsive{-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
 </style>
+<script>
+// Labels every cell of a list table with its column heading, so the phone
+// layout above can show "Status: Pending" etc. Re-run after DataTables
+// redraws (paging, search, sort), which can bring new rows in.
+(function(){
+    if(window.oaStackTables)return;
+    window.oaStackTables=function(){
+        $('.oa-page table.table').each(function(){
+            var $table=$(this),labels=[];
+            $table.find('thead tr:last th').each(function(){labels.push($.trim($(this).text()));});
+            if(!labels.length)return;
+            $table.addClass('oa-stack');
+            $table.find('tbody tr').each(function(){
+                $(this).children('td').each(function(i){if(!$(this).attr('colspan'))$(this).attr('data-label',labels[i]||'');});
+            });
+        });
+    };
+    $(function(){window.oaStackTables();});
+    $(document).on('draw.dt',function(){window.oaStackTables();});
+})();
+</script>

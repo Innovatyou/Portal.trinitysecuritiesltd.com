@@ -253,9 +253,12 @@ class Workflow_engine
                     // second manual retry with an overlapping selection)
                     // would otherwise hit that and (DBDebug is off) fail
                     // silently; skip rather than re-insert.
-                    $already = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stage->id, 'user_id' => $userId])->countAllResults();
+                    $already = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stage->id, 'user_id' => $userId])->get()->getRow();
                     if (!$already) {
                         $this->db->table($this->p . 'oa_assignments')->insert(['stage_instance_id' => $stage->id, 'user_id' => $userId, 'source_snapshot' => 'manual_override', 'status' => 'pending', 'assigned_at' => $now]);
+                    } elseif ($already->status === 'reassigned') {
+                        // Taken off this stage by Approver_sync - hand it back.
+                        $this->db->table($this->p . 'oa_assignments')->where('id', $already->id)->update(['source_snapshot' => 'manual_override', 'status' => 'pending', 'acted_at' => null, 'assigned_at' => $now]);
                     }
                 }
                 $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['current_stage_instance_id' => $stage->id, 'updated_at' => $now]);

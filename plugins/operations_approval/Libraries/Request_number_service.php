@@ -32,7 +32,15 @@ class Request_number_service
         $table = $dbPrefix . 'oa_prefix_sequences';
         $year = (int) date('Y');
 
-        $db->query("CREATE TABLE IF NOT EXISTS `{$table}` (`prefix` VARCHAR(20) NOT NULL, `sequence_year` SMALLINT UNSIGNED NOT NULL, `last_number` BIGINT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (`prefix`,`sequence_year`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        // CREATE TABLE - even IF NOT EXISTS, even when the table is there -
+        // makes MySQL implicitly COMMIT the caller's open transaction (this
+        // runs mid-submit), so only issue it when the table is really missing.
+        static $tableReady = [];
+        if (empty($tableReady[$table])) {
+            $exists = $db->query('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?', [$table])->getRow();
+            if (!$exists) $db->query("CREATE TABLE IF NOT EXISTS `{$table}` (`prefix` VARCHAR(20) NOT NULL, `sequence_year` SMALLINT UNSIGNED NOT NULL, `last_number` BIGINT UNSIGNED NOT NULL DEFAULT 0, PRIMARY KEY (`prefix`,`sequence_year`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            $tableReady[$table] = true;
+        }
 
         $existing = $db->query("SELECT `last_number` FROM `{$table}` WHERE `prefix`=? AND `sequence_year`=?", [$normalizedPrefix, $year])->getRow();
         if (!$existing) {

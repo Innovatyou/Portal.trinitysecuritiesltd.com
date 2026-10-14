@@ -42,6 +42,12 @@ class Approver_resolver
         foreach ($ids as $id) {
             $resolved[] = $delegations->activeDelegate($id, (int) $request->workflow_id) ?: $id;
         }
-        return array_values(array_unique($resolved));
+        $resolved = array_values(array_unique($resolved));
+        // A deactivated or deleted user can never act on the assignment -
+        // handing them the stage just strands the request.
+        if (!$resolved) return [];
+        $active = $db->table($db->getPrefix() . 'users')->select('id')->whereIn('id', $resolved)->where(['status' => 'active', 'deleted' => 0])->get()->getResult();
+        $activeIds = array_map(fn($row) => (int) $row->id, $active);
+        return array_values(array_filter($resolved, fn($id) => in_array((int) $id, $activeIds, true)));
     }
 }

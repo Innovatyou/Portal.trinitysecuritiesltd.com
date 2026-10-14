@@ -3,6 +3,7 @@
 namespace operations_approval\Controllers;
 
 use App\Controllers\Security_Controller;
+use operations_approval\Libraries\Approver_sync;
 use operations_approval\Libraries\Operations_permissions;
 
 class Operations_workflows extends Security_Controller
@@ -103,6 +104,9 @@ class Operations_workflows extends Security_Controller
             $this->db->table($this->p . 'oa_workflow_versions')->where('id', $version->id)->update(['status' => 'published', 'published_by' => $this->login_user->id, 'published_at' => $now]);
             $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['current_version_id' => $version->id, 'status' => 'active', 'updated_at' => $now]);
             $this->db->transCommit();
+            // Move requests already in flight onto the new definition, so a
+            // changed approver takes over their open stages straight away.
+            (new Approver_sync())->syncStale($id, null, $this->login_user);
             echo json_encode(['success' => true, 'message' => app_lang('operations_workflow_published'), 'redirect_to' => get_uri('operations_workflows')]);
         } catch (\Throwable $e) {
             $this->db->transRollback();

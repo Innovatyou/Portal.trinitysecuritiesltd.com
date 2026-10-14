@@ -285,8 +285,12 @@ class Workflow_engine
             $position = $request->return_strategy === 'restart' ? 1 : (int) $returned->position;
             $stage = $this->db->table($this->p . 'oa_stages')->where(['version_id' => $request->version_id, 'position' => $position])->get()->getRow();
             if (!$stage) throw new \DomainException('Workflow stage cannot be resumed.');
-            $maxCycle = $this->db->table($this->p . 'oa_stage_instances')->selectMax('cycle_no', 'cycle')->where(['request_id' => $requestId, 'stage_id' => $stage->id])->get()->getRow();
-            $inserted = $this->db->table($this->p . 'oa_stage_instances')->insert(['request_id' => $requestId, 'stage_id' => $stage->id, 'position' => $stage->position, 'name_snapshot' => $stage->name, 'type_snapshot' => $stage->stage_type, 'status' => 'pending', 'cycle_no' => ((int) ($maxCycle->cycle ?? 0)) + 1, 'rule_snapshot' => $stage->approval_rule, 'required_count' => $stage->required_count]);
+            // Reopen it with the workflow's CURRENT definition of that stage,
+            // so an approver changed since the request was submitted is the
+            // one who gets it back (see Approver_sync).
+            $stage = (new Approver_sync())->currentStageFor($stage, (int) $request->workflow_id);
+            $maxCycle = $this->db->table($this->p . 'oa_stage_instances')->selectMax('cycle_no', 'cycle')->where(['request_id' => $requestId, 'position' => $position])->get()->getRow();
+            $inserted = $this->db->table($this->p . 'oa_stage_instances')->insert(['request_id' => $requestId, 'stage_id' => $stage->id, 'position' => $position, 'name_snapshot' => $stage->name, 'type_snapshot' => $stage->stage_type, 'status' => 'pending', 'cycle_no' => ((int) ($maxCycle->cycle ?? 0)) + 1, 'rule_snapshot' => $stage->approval_rule, 'required_count' => $stage->required_count]);
             if (!$inserted) throw new \RuntimeException('Could not reopen the returned stage. Please try again.');
             $now = get_current_utc_time();
             $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'resubmitted', 'return_stage_instance_id' => null, 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1]);
@@ -432,7 +436,10 @@ class Workflow_engine
 
     private function approvalThresholdMet(int $stageId, object $stage): bool
     {
-        $total = $this->db->table($this->p . 'oa_assignments')->where('stage_instance_id', $stageId)->countAllResults();
+        // Assignments handed to someone else (delegated) or dropped because
+        // the workflow's approver changed (reassigned) can never be
+        // approved - counting them would stall an "all" stage forever.
+        $total = $this->db->table($this->p . 'oa_assignments')->where('stage_instance_id', $stageId)->whereNotIn('status', ['delegated', 'reassigned'])->countAllResults();
         $approved = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageId, 'status' => 'approve'])->countAllResults();
         if ($stage->rule_snapshot === 'all') return $approved >= $total;
         if ($stage->rule_snapshot === 'minimum') return $approved >= (int) $stage->required_count;

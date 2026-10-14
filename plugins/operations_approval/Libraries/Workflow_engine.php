@@ -45,12 +45,14 @@ class Workflow_engine
             $this->activateNext($request, $actor);
             $this->audit->record('request_submitted', $requestId, null, $actor, [], ['request_no' => $number, 'version_id' => $workflow->current_version_id]);
             $this->db->transCommit();
-            (new Notification_service())->send('request_submitted', $requestId, [$actor->id], $actor, ['dedupe' => 'submit-' . $requestId]);
-            $this->notifyActiveApprovers($requestId, $actor);
         } catch (\Throwable $e) {
             $this->db->transRollback();
             throw $e;
         }
+        $this->notifySafely(function () use ($requestId, $actor) {
+            (new Notification_service())->send('request_submitted', $requestId, [$actor->id], $actor, ['dedupe' => 'submit-' . $requestId]);
+            $this->notifyActiveApprovers($requestId, $actor);
+        });
     }
 
     public function decide(int $requestId, int $stageInstanceId, int $expectedLockVersion, string $decision, string $comment, object $actor, bool $isOverride = false): void
@@ -115,13 +117,15 @@ class Workflow_engine
             }
             $this->audit->record($decision === 'approve' ? 'stage_approved' : 'request_' . $decision . 'ed', $requestId, $stageInstanceId, $actor, [], ['comment' => $comment]);
             $this->db->transCommit();
-            $event = $decision === 'approve' ? 'request_approved' : ($decision === 'reject' ? 'request_rejected' : 'request_returned');
-            (new Notification_service())->send($event, $requestId, (new Notification_service())->requester($requestId), $actor, ['comment' => $comment, 'dedupe' => 'decision-' . $stageInstanceId . '-' . $assignment->id]);
-            if ($decision === 'approve') $this->notifyActiveApprovers($requestId, $actor);
         } catch (\Throwable $e) {
             $this->db->transRollback();
             throw $e;
         }
+        $this->notifySafely(function () use ($decision, $requestId, $actor, $comment, $stageInstanceId, $assignment) {
+            $event = $decision === 'approve' ? 'request_approved' : ($decision === 'reject' ? 'request_rejected' : 'request_returned');
+            (new Notification_service())->send($event, $requestId, (new Notification_service())->requester($requestId), $actor, ['comment' => $comment, 'dedupe' => 'decision-' . $stageInstanceId . '-' . $assignment->id]);
+            if ($decision === 'approve') $this->notifyActiveApprovers($requestId, $actor);
+        });
     }
 
     // The approval $userId gave on this request that they can still take
@@ -282,19 +286,22 @@ class Workflow_engine
             $stage = $this->db->table($this->p . 'oa_stages')->where(['version_id' => $request->version_id, 'position' => $position])->get()->getRow();
             if (!$stage) throw new \DomainException('Workflow stage cannot be resumed.');
             $maxCycle = $this->db->table($this->p . 'oa_stage_instances')->selectMax('cycle_no', 'cycle')->where(['request_id' => $requestId, 'stage_id' => $stage->id])->get()->getRow();
-            $this->db->table($this->p . 'oa_stage_instances')->insert(['request_id' => $requestId, 'stage_id' => $stage->id, 'position' => $stage->position, 'name_snapshot' => $stage->name, 'type_snapshot' => $stage->stage_type, 'status' => 'pending', 'cycle_no' => ((int) ($maxCycle->cycle ?? 0)) + 1, 'rule_snapshot' => $stage->approval_rule, 'required_count' => $stage->required_count]);
+            $inserted = $this->db->table($this->p . 'oa_stage_instances')->insert(['request_id' => $requestId, 'stage_id' => $stage->id, 'position' => $stage->position, 'name_snapshot' => $stage->name, 'type_snapshot' => $stage->stage_type, 'status' => 'pending', 'cycle_no' => ((int) ($maxCycle->cycle ?? 0)) + 1, 'rule_snapshot' => $stage->approval_rule, 'required_count' => $stage->required_count]);
+            if (!$inserted) throw new \RuntimeException('Could not reopen the returned stage. Please try again.');
             $now = get_current_utc_time();
             $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['status' => 'resubmitted', 'return_stage_instance_id' => null, 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1]);
             $request->status = 'resubmitted';
             $this->activateNext($request, $actor, $position - 1);
             $this->audit->record('request_resubmitted', $requestId, null, $actor, [], ['revision_no' => $request->revision_no, 'strategy' => $request->return_strategy]);
             $this->db->transCommit();
-            (new Notification_service())->send('request_resubmitted', $requestId, $this->priorApprovers($requestId), $actor, ['dedupe' => 'resubmit-' . $request->revision_no]);
-            $this->notifyActiveApprovers($requestId, $actor);
         } catch (\Throwable $e) {
             $this->db->transRollback();
             throw $e;
         }
+        $this->notifySafely(function () use ($requestId, $actor, $request) {
+            (new Notification_service())->send('request_resubmitted', $requestId, $this->priorApprovers($requestId), $actor, ['dedupe' => 'resubmit-' . $request->revision_no]);
+            $this->notifyActiveApprovers($requestId, $actor);
+        });
     }
 
     // Superadmin-only (operations_admin_override): reshuffle a request's
@@ -447,6 +454,23 @@ class Workflow_engine
         $request = $this->db->query("SELECT * FROM `{$this->p}oa_requests` WHERE `id`=? AND `deleted`=0 FOR UPDATE", [$requestId])->getRow();
         if (!$request) throw new \DomainException('Request not found.');
         return $request;
+    }
+
+    // Notifications run only after the state change is saved, and a failing
+    // one (mail server down, missing template...) is logged instead of
+    // thrown. Inside a caller's outer transaction - Operations::resubmit()
+    // wraps the field revision and this engine call in one - our own
+    // transCommit() is only a nested one, so an exception from a
+    // notification used to roll back the WHOLE resubmission: the request
+    // stayed "returned" with no reopened stage, and the approver who
+    // returned it never got their Approve button back.
+    private function notifySafely(callable $send): void
+    {
+        try {
+            $send();
+        } catch (\Throwable $e) {
+            log_message('error', 'operations_approval notification failed: ' . $e->getMessage());
+        }
     }
 
     private function notifyActiveApprovers(int $requestId, object $actor): void

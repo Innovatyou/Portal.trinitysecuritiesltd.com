@@ -76,8 +76,18 @@ class Operations_workflows extends Security_Controller
             $versionNo = ((int) ($last->max_version ?? 0)) + 1;
             $json = json_encode($definition, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             if (!$this->db->table($this->p . 'oa_workflow_versions')->insert(['workflow_id' => $id, 'version_no' => $versionNo, 'definition_json' => $json, 'definition_hash' => hash('sha256', $json), 'status' => 'draft', 'created_by' => $this->login_user->id, 'created_at' => $now])) throw new \RuntimeException('Failed to save the workflow version.');
+            $versionId = (int) $this->db->insertID();
+            // A workflow that is already live publishes its edits on save.
+            // Saving used to leave them as a draft until someone also
+            // clicked Publish on the workflow list - the editor showed the
+            // new approver, so it looked done, while every request kept
+            // using the old version. A brand-new workflow still waits for
+            // its first explicit Publish.
+            $isLive = (int) ($this->db->table($this->p . 'oa_workflows')->select('current_version_id')->where('id', $id)->get()->getRow()->current_version_id ?? 0) > 0;
+            if ($isLive) $this->publishVersion($id, $versionId, $definition, false);
             $this->db->transCommit();
-            echo json_encode(['success' => true, 'message' => app_lang('record_saved'), 'redirect_to' => get_uri('operations_workflows/edit/' . $id)]);
+            if ($isLive) (new Approver_sync())->syncStale($id, null, $this->login_user);
+            echo json_encode(['success' => true, 'message' => app_lang($isLive ? 'operations_workflow_saved_published' : 'operations_workflow_saved_draft'), 'redirect_to' => get_uri('operations_workflows/edit/' . $id)]);
         } catch (\Throwable $e) {
             $this->db->transRollback();
             log_message('error', 'Operations workflow save failed: {message}', ['message' => $e->getMessage()]);
@@ -94,15 +104,7 @@ class Operations_workflows extends Security_Controller
         if ($errors) return $this->jsonError(implode(' ', $errors));
         $this->db->transBegin();
         try {
-            foreach ($definition['fields'] as $position => $field) {
-                $this->db->table($this->p . 'oa_fields')->insert(['version_id' => $version->id, 'field_key' => $field['key'], 'label' => $field['label'], 'field_type' => $field['type'], 'position' => $position + 1, 'config_json' => json_encode($field), 'is_required' => !empty($field['required']) ? 1 : 0]);
-            }
-            foreach ($definition['stages'] as $position => $stage) {
-                $this->db->table($this->p . 'oa_stages')->insert(['version_id' => $version->id, 'name' => $stage['name'], 'stage_type' => $stage['type'] ?? 'approval', 'position' => $position + 1, 'approver_type' => $stage['approver_type'], 'approver_config_json' => json_encode($stage['approver'] ?? []), 'approval_rule' => $stage['rule'] ?? 'any', 'required_count' => (int) ($stage['required_count'] ?? 1), 'condition_json' => !empty($stage['condition']) ? json_encode($stage['condition']) : null, 'settings_json' => json_encode($stage['settings'] ?? []), 'sla_minutes' => !empty($stage['sla_minutes']) ? (int) $stage['sla_minutes'] : null]);
-            }
-            $now = get_current_utc_time();
-            $this->db->table($this->p . 'oa_workflow_versions')->where('id', $version->id)->update(['status' => 'published', 'published_by' => $this->login_user->id, 'published_at' => $now]);
-            $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update(['current_version_id' => $version->id, 'status' => 'active', 'updated_at' => $now]);
+            $this->publishVersion($id, (int) $version->id, $definition, true);
             $this->db->transCommit();
             // Move requests already in flight onto the new definition, so a
             // changed approver takes over their open stages straight away.
@@ -113,6 +115,27 @@ class Operations_workflows extends Security_Controller
             log_message('error', 'Operations workflow publish failed: {message}', ['message' => $e->getMessage()]);
             $this->jsonError(app_lang('error_occurred'));
         }
+    }
+
+    // Turns a saved version into the workflow's live one: materialises its
+    // fields and stages and points the workflow at it. Older drafts are
+    // retired so the list's Publish button can't later roll back to them.
+    // $activate: an explicit Publish also switches the workflow on; an
+    // auto-publish on save leaves a disabled workflow disabled.
+    private function publishVersion(int $id, int $versionId, array $definition, bool $activate): void
+    {
+        foreach ($definition['fields'] as $position => $field) {
+            $this->db->table($this->p . 'oa_fields')->insert(['version_id' => $versionId, 'field_key' => $field['key'], 'label' => $field['label'], 'field_type' => $field['type'], 'position' => $position + 1, 'config_json' => json_encode($field), 'is_required' => !empty($field['required']) ? 1 : 0]);
+        }
+        foreach ($definition['stages'] as $position => $stage) {
+            $this->db->table($this->p . 'oa_stages')->insert(['version_id' => $versionId, 'name' => $stage['name'], 'stage_type' => $stage['type'] ?? 'approval', 'position' => $position + 1, 'approver_type' => $stage['approver_type'], 'approver_config_json' => json_encode($stage['approver'] ?? []), 'approval_rule' => $stage['rule'] ?? 'any', 'required_count' => (int) ($stage['required_count'] ?? 1), 'condition_json' => !empty($stage['condition']) ? json_encode($stage['condition']) : null, 'settings_json' => json_encode($stage['settings'] ?? []), 'sla_minutes' => !empty($stage['sla_minutes']) ? (int) $stage['sla_minutes'] : null]);
+        }
+        $now = get_current_utc_time();
+        $this->db->table($this->p . 'oa_workflow_versions')->where('id', $versionId)->update(['status' => 'published', 'published_by' => $this->login_user->id, 'published_at' => $now]);
+        $this->db->table($this->p . 'oa_workflow_versions')->where(['workflow_id' => $id, 'status' => 'draft', 'id <' => $versionId])->update(['status' => 'retired']);
+        $update = ['current_version_id' => $versionId, 'updated_at' => $now];
+        if ($activate) $update['status'] = 'active';
+        $this->db->table($this->p . 'oa_workflows')->where('id', $id)->update($update);
     }
 
     public function toggle_status(int $id)

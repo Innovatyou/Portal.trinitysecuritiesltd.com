@@ -225,7 +225,7 @@ class Operations extends Security_Controller
         $data['request'] = $request;
         $data['values'] = $this->db->table($this->p . 'oa_request_values rv')->select('rv.*, f.field_type')->join($this->p . 'oa_fields f', 'f.id=rv.field_id', 'left')->where(['rv.request_id' => $id, 'rv.revision_no' => $request->revision_no])->get()->getResult();
         $data['customFields'] = (new Custom_field_service())->list($id);
-        $data['timeline'] = $this->db->table($this->p . 'oa_stage_instances i')->select('i.*, d.decision, d.comment, d.actor_name_snapshot, d.created_at decision_at')->join($this->p . 'oa_decisions d', 'd.stage_instance_id=i.id', 'left')->where('i.request_id', $id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResult();
+        $data['timeline'] = $this->db->table($this->p . 'oa_stage_instances i')->select('i.*, d.decision, d.comment, d.actor_name_snapshot, d.created_at decision_at')->join($this->p . 'oa_decisions d', 'd.stage_instance_id=i.id', 'left')->where('i.request_id', $id)->orderBy('i.position')->orderBy('i.cycle_no')->orderBy('d.created_at')->get()->getResult();
         // Who each still-open stage is waiting on, so a changed approver
         // is visible on the timeline (not just in their own inbox).
         $data['awaiting'] = [];
@@ -273,6 +273,27 @@ class Operations extends Security_Controller
         $data['can_retry_configuration'] = $this->permissions->allowed('operations_manage_workflows', $this->login_user);
         $data['can_reorder_stages'] = $this->hasAdminOverride();
         $data['revocable_approval'] = (new Workflow_engine())->revocableApproval($id, (int) $this->login_user->id);
+        $engine = new Workflow_engine();
+        // Who a Return would go back to: the approver of the previous stage.
+        $data['return_previous'] = null;
+        if ($data['can_decide'] && $data['active_stage']) {
+            $previous = $engine->previousApprovedStage($id, $data['active_stage']);
+            if ($previous) $data['return_previous'] = $this->stageWithApprover($previous);
+        }
+        // Being corrected by a previous approver (returned to them).
+        $data['correction'] = null;
+        if ($request->return_strategy === 'previous_stage' && $request->return_stage_instance_id && $request->status !== 'returned') {
+            $data['correction'] = $this->returnDecision((int) $request->return_stage_instance_id);
+        }
+        // Returned to the requester, but there is a previous approver it
+        // could go to instead.
+        $data['redirect_return'] = null;
+        if ($request->status === 'returned' && $request->return_stage_instance_id) {
+            $returnDecision = $this->returnDecision((int) $request->return_stage_instance_id);
+            $returnedStage = $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->return_stage_instance_id)->get()->getRow();
+            $previous = $returnedStage ? $engine->previousApprovedStage($id, $returnedStage) : null;
+            if ($returnDecision && $previous && ((int) $returnDecision->actor_id === (int) $this->login_user->id || $this->hasAdminOverride())) $data['redirect_return'] = $this->stageWithApprover($previous);
+        }
         return $this->template->rander('operations_approval\Views\operations\view', $data);
     }
 
@@ -317,26 +338,9 @@ class Operations extends Security_Controller
         $request = $this->getRequest($id);
         if (!(new Access_service())->canEdit($request, $this->login_user) || $request->status !== 'returned') app_redirect('forbidden');
         $this->validate_submitted_data(['resubmission_comment' => 'required']);
-        $fields = $this->db->table($this->p . 'oa_fields')->where('version_id', $request->version_id)->get()->getResult();
-        $oldRows = $this->db->table($this->p . 'oa_request_values')->where(['request_id' => $id, 'revision_no' => $request->revision_no])->get()->getResult();
-        $old = [];
-        foreach ($oldRows as $row) $old[$row->field_key] = $row->value_json ? json_decode($row->value_json, true) : $row->value_text;
-        $newRevision = ((int) $request->revision_no) + 1;
-        $changes = [];
         $this->db->transBegin();
         try {
-            foreach ($fields as $field) {
-                $config = json_decode($field->config_json ?: '{}', true) ?: [];
-                $editable = !array_key_exists('editable_on_return', $config) || !empty($config['editable_on_return']);
-                $value = $editable && $this->request->getPost('field_' . $field->field_key) !== null ? $this->request->getPost('field_' . $field->field_key) : ($old[$field->field_key] ?? null);
-                if ($field->is_required && ($value === null || $value === '')) throw new \DomainException(sprintf(app_lang('operations_field_required'), $field->label));
-                if (($old[$field->field_key] ?? null) != $value) $changes[$field->field_key] = ['from' => $old[$field->field_key] ?? null, 'to' => $value];
-                $this->db->table($this->p . 'oa_request_values')->insert(['request_id' => $id, 'field_id' => $field->id, 'field_key' => $field->field_key, 'value_text' => is_array($value) ? null : clean_data((string) $value), 'value_json' => is_array($value) ? json_encode($value) : null, 'revision_no' => $newRevision, 'created_at' => get_current_utc_time()]);
-            }
-            $reason = trim((string) $this->request->getPost('resubmission_comment'));
-            $this->db->table($this->p . 'oa_request_revisions')->insert(['request_id' => $id, 'revision_no' => $newRevision, 'changed_by' => $this->login_user->id, 'reason' => clean_data($reason), 'changes_json' => json_encode($changes), 'created_at' => get_current_utc_time()]);
-            $this->db->table($this->p . 'oa_requests')->where('id', $id)->update(['revision_no' => $newRevision, 'updated_at' => get_current_utc_time()]);
-            (new Audit_service())->record('request_fields_revised', $id, null, $this->login_user, $old, $changes, ['reason' => $reason, 'revision_no' => $newRevision]);
+            $this->saveRevision($request, trim((string) $this->request->getPost('resubmission_comment')));
             (new Workflow_engine())->resubmit($id, $this->login_user);
             $this->db->transCommit();
             echo json_encode(['success' => true, 'message' => app_lang('operations_request_resubmitted'), 'redirect_to' => get_uri('operations/view/' . $id)]);
@@ -344,6 +348,84 @@ class Operations extends Security_Controller
             $this->db->transRollback();
             $this->jsonError($e->getMessage());
         }
+    }
+
+    // A previous approver the request was returned to corrects it (field
+    // edits, attachments) and sends it back up the chain - which is an
+    // approval of their reopened stage.
+    public function correct(int $id)
+    {
+        $request = $this->getRequest($id);
+        $this->validate_submitted_data(['stage_instance_id' => 'required|numeric', 'lock_version' => 'required|numeric', 'resubmission_comment' => 'required']);
+        $stageInstanceId = (int) $this->request->getPost('stage_instance_id');
+        if ($request->return_strategy !== 'previous_stage' || !$request->return_stage_instance_id || (int) $request->current_stage_instance_id !== $stageInstanceId) return $this->jsonError(app_lang('operations_correction_not_open'));
+        $isAssignedApprover = $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'user_id' => $this->login_user->id, 'status' => 'pending'])->countAllResults() > 0;
+        $hasOverride = $this->hasAdminOverride();
+        if (!$isAssignedApprover && !$hasOverride) app_redirect('forbidden');
+        $reason = trim((string) $this->request->getPost('resubmission_comment'));
+        $this->db->transBegin();
+        try {
+            $this->saveRevision($request, $reason, true);
+            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), 'approve', $reason, $this->login_user, $hasOverride && !$isAssignedApprover);
+            $this->db->transCommit();
+            echo json_encode(['success' => true, 'message' => app_lang('operations_correction_resubmitted'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    public function return_to_previous(int $id)
+    {
+        $request = $this->getRequest($id);
+        if (!$this->canView($request)) app_redirect('forbidden');
+        try {
+            (new Workflow_engine())->returnToPreviousInstead($id, $this->login_user, $this->hasAdminOverride());
+            echo json_encode(['success' => true, 'message' => app_lang('operations_return_redirected'), 'redirect_to' => get_uri('operations/view/' . $id)]);
+        } catch (\Throwable $e) {
+            $this->jsonError($e->getMessage());
+        }
+    }
+
+    // Stage instance + who approved it, for "Return to: Control (Kazeem)".
+    private function stageWithApprover(object $instance): object
+    {
+        $names = array_map(fn($row) => $row->actor_name_snapshot, $this->db->table($this->p . 'oa_decisions')->select('actor_name_snapshot')->where(['stage_instance_id' => $instance->id, 'decision' => 'approve'])->get()->getResult());
+        $instance->approver_names = implode(', ', array_filter($names));
+        return $instance;
+    }
+
+    private function returnDecision(int $stageInstanceId): ?object
+    {
+        return $this->db->table($this->p . 'oa_decisions d')->select('d.*, i.name_snapshot stage_name')->join($this->p . 'oa_stage_instances i', 'i.id=d.stage_instance_id')->where(['d.stage_instance_id' => $stageInstanceId, 'd.decision' => 'return'])->orderBy('d.id', 'DESC')->get(1)->getRow();
+    }
+
+    // Stores the posted field values as a new revision of the request.
+    // $onlyIfChanged: skip when nothing changed (a correction that only
+    // added attachments).
+    private function saveRevision(object $request, string $reason, bool $onlyIfChanged = false): void
+    {
+        $id = (int) $request->id;
+        $fields = $this->db->table($this->p . 'oa_fields')->where('version_id', $request->version_id)->get()->getResult();
+        $oldRows = $this->db->table($this->p . 'oa_request_values')->where(['request_id' => $id, 'revision_no' => $request->revision_no])->get()->getResult();
+        $old = [];
+        foreach ($oldRows as $row) $old[$row->field_key] = $row->value_json ? json_decode($row->value_json, true) : $row->value_text;
+        $newRevision = ((int) $request->revision_no) + 1;
+        $changes = [];
+        $rows = [];
+        foreach ($fields as $field) {
+            $config = json_decode($field->config_json ?: '{}', true) ?: [];
+            $editable = !array_key_exists('editable_on_return', $config) || !empty($config['editable_on_return']);
+            $value = $editable && $this->request->getPost('field_' . $field->field_key) !== null ? $this->request->getPost('field_' . $field->field_key) : ($old[$field->field_key] ?? null);
+            if ($field->is_required && ($value === null || $value === '')) throw new \DomainException(sprintf(app_lang('operations_field_required'), $field->label));
+            if (($old[$field->field_key] ?? null) != $value) $changes[$field->field_key] = ['from' => $old[$field->field_key] ?? null, 'to' => $value];
+            $rows[] = ['request_id' => $id, 'field_id' => $field->id, 'field_key' => $field->field_key, 'value_text' => is_array($value) ? null : clean_data((string) $value), 'value_json' => is_array($value) ? json_encode($value) : null, 'revision_no' => $newRevision, 'created_at' => get_current_utc_time()];
+        }
+        if ($onlyIfChanged && !$changes) return;
+        foreach ($rows as $row) $this->db->table($this->p . 'oa_request_values')->insert($row);
+        $this->db->table($this->p . 'oa_request_revisions')->insert(['request_id' => $id, 'revision_no' => $newRevision, 'changed_by' => $this->login_user->id, 'reason' => clean_data($reason), 'changes_json' => json_encode($changes), 'created_at' => get_current_utc_time()]);
+        $this->db->table($this->p . 'oa_requests')->where('id', $id)->update(['revision_no' => $newRevision, 'updated_at' => get_current_utc_time()]);
+        (new Audit_service())->record('request_fields_revised', $id, null, $this->login_user, $old, $changes, ['reason' => $reason, 'revision_no' => $newRevision]);
     }
 
     public function cancel(int $id)
@@ -567,7 +649,7 @@ class Operations extends Security_Controller
         $hasOverride = $this->hasAdminOverride();
         if (!$requiredPermission || (!$isAssignedApprover && !$hasOverride && !$this->permissions->allowed($requiredPermission, $this->login_user))) app_redirect('forbidden');
         try {
-            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user, $hasOverride && !$isAssignedApprover);
+            (new Workflow_engine())->decide($id, $stageInstanceId, (int) $this->request->getPost('lock_version'), $decision, trim((string) $this->request->getPost('comment')), $this->login_user, $hasOverride && !$isAssignedApprover, $this->request->getPost('return_to') === 'requester' ? 'requester' : 'previous');
             echo json_encode(['success' => true, 'message' => app_lang('operations_decision_recorded'), 'redirect_to' => get_uri('operations/view/' . $id)]);
         } catch (\Throwable $e) {
             log_message('warning', 'Operations decision rejected: {message}', ['message' => $e->getMessage()]);

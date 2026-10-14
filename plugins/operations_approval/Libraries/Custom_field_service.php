@@ -19,9 +19,16 @@ class Custom_field_service
     // tenant's plugin "Updates" action is a manual admin step a code
     // deploy doesn't trigger on its own, so this has to work immediately
     // without it.
+    // CREATE TABLE - even IF NOT EXISTS, even when the table is there -
+    // makes MySQL implicitly COMMIT any open transaction (storeMany() runs
+    // mid-create), so only issue it when the table is really missing.
     private function ensureTable(): void
     {
+        static $ready = [];
         $table = $this->p . 'oa_request_custom_fields';
+        if (!empty($ready[$table])) return;
+        $ready[$table] = true;
+        if ($this->db->query('SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?', [$table])->getRow()) return;
         $this->db->query("CREATE TABLE IF NOT EXISTS `{$table}` (`id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT, `request_id` BIGINT UNSIGNED NOT NULL, `label` VARCHAR(180) NOT NULL, `value` LONGTEXT NULL, `created_by` BIGINT UNSIGNED NOT NULL, `created_at` DATETIME NOT NULL, PRIMARY KEY (`id`), KEY `oa_request_custom_field_request` (`request_id`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     }
 

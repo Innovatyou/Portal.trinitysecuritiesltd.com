@@ -55,8 +55,14 @@ class Workflow_engine
         });
     }
 
-    public function decide(int $requestId, int $stageInstanceId, int $expectedLockVersion, string $decision, string $comment, object $actor, bool $isOverride = false): void
+    // $returnTo (only for 'return'): 'previous' sends the request back to
+    // the approver of the stage approved just before this one, who corrects
+    // it and approves it back to this stage; 'requester' sends it back to
+    // the person who raised it. 'previous' falls back to the requester when
+    // this is the first stage.
+    public function decide(int $requestId, int $stageInstanceId, int $expectedLockVersion, string $decision, string $comment, object $actor, bool $isOverride = false, string $returnTo = 'previous'): void
     {
+        $returnedToPrevious = false;
         if (!in_array($decision, ['approve', 'reject', 'return'], true)) {
             throw new \InvalidArgumentException('Unsupported decision.');
         }
@@ -100,7 +106,12 @@ class Workflow_engine
                 'created_at' => $now, 'ip_address' => service('request')->getIPAddress()
             ]);
             $this->db->table($this->p . 'oa_assignments')->where('id', $assignment->id)->update(['status' => $decision, 'acted_at' => $now]);
-            if ($decision === 'reject' || $decision === 'return') {
+            $previous = $decision === 'return' && $returnTo !== 'requester' ? $this->previousApprovedStage($requestId, $stage) : null;
+            if ($previous) {
+                $this->db->table($this->p . 'oa_stage_instances')->where('id', $stageInstanceId)->update(['status' => 'returned', 'completed_at' => $now, 'lock_version' => ((int) $stage->lock_version) + 1]);
+                $this->routeToPrevious($request, $stage, $previous, $actor);
+                $returnedToPrevious = true;
+            } elseif ($decision === 'reject' || $decision === 'return') {
                 $requestStatus = $decision === 'reject' ? 'rejected' : 'returned';
                 $this->db->table($this->p . 'oa_stage_instances')->where('id', $stageInstanceId)->update(['status' => $requestStatus, 'completed_at' => $now, 'lock_version' => ((int) $stage->lock_version) + 1]);
                 $requestUpdate = ['status' => $requestStatus, 'current_stage_instance_id' => null, 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1];
@@ -113,6 +124,9 @@ class Workflow_engine
             } elseif ($this->approvalThresholdMet($stageInstanceId, $stage)) {
                 $this->db->table($this->p . 'oa_stage_instances')->where('id', $stageInstanceId)->update(['status' => 'approved', 'completed_at' => $now, 'lock_version' => ((int) $stage->lock_version) + 1]);
                 $this->db->table($this->p . 'oa_assignments')->where(['stage_instance_id' => $stageInstanceId, 'status' => 'pending'])->update(['status' => 'not_required']);
+                // Approving a correction sends it back up the chain; the
+                // request is no longer "returned to a previous approver".
+                if ($request->return_stage_instance_id) $this->db->table($this->p . 'oa_requests')->where('id', $requestId)->update(['return_stage_instance_id' => null, 'return_strategy' => null]);
                 $this->activateNext($request, $actor, (int) $stage->position);
             }
             $this->audit->record($decision === 'approve' ? 'stage_approved' : 'request_' . $decision . 'ed', $requestId, $stageInstanceId, $actor, [], ['comment' => $comment]);
@@ -121,11 +135,79 @@ class Workflow_engine
             $this->db->transRollback();
             throw $e;
         }
+        if ($returnedToPrevious) {
+            $this->notifySafely(function () use ($requestId, $actor, $comment, $stageInstanceId, $assignment) {
+                (new Notification_service())->send('request_returned', $requestId, $this->activeApprovers($requestId), $actor, ['comment' => $comment, 'dedupe' => 'decision-' . $stageInstanceId . '-' . $assignment->id]);
+            });
+            return;
+        }
         $this->notifySafely(function () use ($decision, $requestId, $actor, $comment, $stageInstanceId, $assignment) {
             $event = $decision === 'approve' ? 'request_approved' : ($decision === 'reject' ? 'request_rejected' : 'request_returned');
             (new Notification_service())->send($event, $requestId, (new Notification_service())->requester($requestId), $actor, ['comment' => $comment, 'dedupe' => 'decision-' . $stageInstanceId . '-' . $assignment->id]);
             if ($decision === 'approve') $this->notifyActiveApprovers($requestId, $actor);
         });
+    }
+
+    // The most recent approved stage before $stage (by position), or null
+    // when $stage is the first approval the request went through.
+    public function previousApprovedStage(int $requestId, object $stage): ?object
+    {
+        return $this->db->table($this->p . 'oa_stage_instances')->where(['request_id' => $requestId, 'status' => 'approved', 'position <' => (int) $stage->position])
+            ->orderBy('position', 'DESC')->orderBy('id', 'DESC')->get(1)->getRow();
+    }
+
+    // A request the requester got back can still be redirected to the
+    // previous approver instead - by whoever returned it, or an admin.
+    public function returnToPreviousInstead(int $requestId, object $actor, bool $isOverride = false): void
+    {
+        $this->db->transBegin();
+        try {
+            $request = $this->lockRequest($requestId);
+            if ($request->status !== 'returned' || !$request->return_stage_instance_id) throw new \DomainException('This request is not waiting on the requester.');
+            $returned = $this->db->table($this->p . 'oa_stage_instances')->where('id', $request->return_stage_instance_id)->get()->getRow();
+            $decision = $returned ? $this->db->table($this->p . 'oa_decisions')->where(['stage_instance_id' => $returned->id, 'decision' => 'return'])->orderBy('id', 'DESC')->get(1)->getRow() : null;
+            if (!$decision || (!$isOverride && (int) $decision->actor_id !== (int) $actor->id)) throw new \DomainException('Only the approver who returned this request can send it to the previous approver.');
+            $previous = $this->previousApprovedStage($requestId, $returned);
+            if (!$previous) throw new \DomainException('There is no previous approver to send this request to.');
+            $this->routeToPrevious($request, $returned, $previous, $actor);
+            $this->audit->record('return_redirected', $requestId, (int) $returned->id, $actor, ['returned_to' => 'requester'], ['returned_to' => 'previous', 'stage_instance_id' => (int) $previous->id]);
+            $this->db->transCommit();
+        } catch (\Throwable $e) {
+            $this->db->transRollback();
+            throw $e;
+        }
+        $this->notifySafely(function () use ($requestId, $actor, $decision) {
+            (new Notification_service())->send('request_returned', $requestId, $this->activeApprovers($requestId), $actor, ['comment' => $decision->comment, 'dedupe' => 'redirect-' . $decision->id]);
+        });
+    }
+
+    // Hands a returned request to the approver of $previous: re-queues the
+    // stage that returned it (it comes back once the correction is
+    // approved) and reopens $previous as a new cycle with its current
+    // approvers. return_stage_instance_id/return_strategy='previous_stage'
+    // mark the request as "being corrected by a previous approver".
+    private function routeToPrevious(object $request, object $returnedStage, object $previous, object $actor): void
+    {
+        $this->reopenStage((int) $request->id, $returnedStage);
+        $this->reopenStage((int) $request->id, $previous);
+        $now = get_current_utc_time();
+        $this->db->table($this->p . 'oa_requests')->where('id', $request->id)->update(['status' => 'pending_approval', 'current_stage_instance_id' => null, 'return_stage_instance_id' => $returnedStage->id, 'return_strategy' => 'previous_stage', 'updated_at' => $now, 'lock_version' => ((int) $request->lock_version) + 1]);
+        $this->activateNext($request, $actor, ((int) $previous->position) - 1);
+    }
+
+    private function reopenStage(int $requestId, object $instance): void
+    {
+        $stage = $this->db->table($this->p . 'oa_stages')->where('id', $instance->stage_id)->get()->getRow();
+        if (!$stage) throw new \DomainException('Workflow stage cannot be reopened.');
+        $maxCycle = $this->db->table($this->p . 'oa_stage_instances')->selectMax('cycle_no', 'cycle')->where(['request_id' => $requestId, 'stage_id' => $stage->id])->get()->getRow();
+        $inserted = $this->db->table($this->p . 'oa_stage_instances')->insert(['request_id' => $requestId, 'stage_id' => $stage->id, 'position' => (int) $instance->position, 'name_snapshot' => $stage->name, 'type_snapshot' => $stage->stage_type, 'status' => 'pending', 'cycle_no' => ((int) ($maxCycle->cycle ?? 0)) + 1, 'rule_snapshot' => $stage->approval_rule, 'required_count' => $stage->required_count]);
+        if (!$inserted) throw new \RuntimeException('Could not reopen "' . $stage->name . '". Please try again.');
+    }
+
+    private function activeApprovers(int $requestId): array
+    {
+        $rows = $this->db->table($this->p . 'oa_assignments a')->select('a.user_id')->join($this->p . 'oa_stage_instances i', 'i.id=a.stage_instance_id')->where(['i.request_id' => $requestId, 'a.status' => 'pending'])->whereIn('i.status', ['active', 'overdue'])->get()->getResult();
+        return array_map(fn($row) => (int) $row->user_id, $rows);
     }
 
     // The approval $userId gave on this request that they can still take

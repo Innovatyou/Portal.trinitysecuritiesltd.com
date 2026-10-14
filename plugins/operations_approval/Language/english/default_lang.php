@@ -119,6 +119,7 @@ $lang['operations_resubmit'] = 'Resubmit';
 $lang['operations_returned_requester_notice'] = 'This request was returned to you for correction. Make the changes asked for (upload any corrected documents under Attachments), then click Resubmit in the "Correct and resubmit" box. Uploading files or commenting alone does not send it back for approval.';
 $lang['operations_returned_approver_notice'] = 'This request was returned to %s for correction and has not been resubmitted yet. The Approve, Return and Reject buttons will appear here again once it is resubmitted.';
 $lang['operations_return_reason'] = 'Reason';
+$lang['operations_awaiting_approvers'] = 'Awaiting';
 $lang['operations_request_cancelled'] = 'The request has been cancelled.';
 $lang['operations_cancellation_not_allowed'] = 'Cancellation is not allowed for this workflow.';
 $lang['operations_cancellation_reason'] = 'Cancellation reason';

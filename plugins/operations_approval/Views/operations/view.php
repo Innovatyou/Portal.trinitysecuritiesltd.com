@@ -58,7 +58,7 @@ foreach ($timeline as $item) {
     }
     $oaOpenIndex++;
 } ?>
-<?php if ($item->actor_name_snapshot) { ?><div><?php echo esc($item->actor_name_snapshot); ?> — <?php echo format_to_datetime($item->decision_at); ?></div><div><?php echo nl2br(esc($item->comment)); ?></div><?php } ?></div>
+<?php if ($item->actor_name_snapshot) { ?><div><?php echo esc($item->actor_name_snapshot); ?> — <?php echo format_to_datetime($item->decision_at); ?></div><div><?php echo nl2br(esc($item->comment)); ?></div><?php } ?><?php if (!empty($awaiting[(int) $item->id])) { ?><div class="text-muted"><?php echo app_lang('operations_awaiting_approvers'); ?>: <?php echo esc(implode(', ', $awaiting[(int) $item->id])); ?></div><?php } ?></div>
 <?php } ?>
 </div></div></div></div><div class="col-lg-4">
 <?php if($request->status==='returned' && (int)$request->requester_id===(int)$login_user->id){ ?><div class="card" id="oa-resubmit-card"><div class="card-header"><h4><?php echo app_lang('operations_correct_and_resubmit'); ?></h4></div><div class="card-body"><?php echo form_open(get_uri('operations/resubmit/'.$request->id),['id'=>'operations-resubmit-form','class'=>'general-form']); ?><?php foreach($values as $value){ ?><label><?php echo esc(ucwords(str_replace('_',' ',$value->field_key))); ?></label><textarea name="field_<?php echo esc($value->field_key); ?>" class="form-control mb-2"><?php echo esc($value->value_text?:$value->value_json); ?></textarea><?php } ?><textarea name="resubmission_comment" class="form-control mb-2" placeholder="<?php echo app_lang('operations_resubmission_comment'); ?>" required></textarea><button class="btn btn-primary"><?php echo app_lang('operations_resubmit'); ?></button><?php echo form_close(); ?></div></div><?php } ?>

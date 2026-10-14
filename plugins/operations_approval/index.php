@@ -108,6 +108,8 @@ $routes->post('operations/comment/(:num)', '\operations_approval\Controllers\Ope
 $routes->post('operations/request_information/(:num)', '\operations_approval\Controllers\Operations::request_information/$1', ['filter' => 'csrf']);
 $routes->post('operations/respond_information/(:num)', '\operations_approval\Controllers\Operations::respond_information/$1', ['filter' => 'csrf']);
 $routes->post('operations/resubmit/(:num)', '\operations_approval\Controllers\Operations::resubmit/$1', ['filter' => 'csrf']);
+$routes->post('operations/correct/(:num)', '\operations_approval\Controllers\Operations::correct/$1', ['filter' => 'csrf']);
+$routes->post('operations/return_to_previous/(:num)', '\operations_approval\Controllers\Operations::return_to_previous/$1', ['filter' => 'csrf']);
 $routes->post('operations/cancel/(:num)', '\operations_approval\Controllers\Operations::cancel/$1', ['filter' => 'csrf']);
 $routes->post('operations/delete/(:num)', '\operations_approval\Controllers\Operations::delete/$1', ['filter' => 'csrf']);
 $routes->post('operations/retry_configuration/(:num)', '\operations_approval\Controllers\Operations::retryConfiguration/$1', ['filter' => 'csrf']);

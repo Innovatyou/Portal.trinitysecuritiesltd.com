@@ -194,7 +194,7 @@ class Operations_api extends ResourceController
     {
         $id=(int)$id;$user=$this->auth();if(!$user)return $this->unauthorized();(new Approver_sync())->syncStale(null,$id,$user);$request=$this->requestRow($id);if(!$request||(new Access_service())->canView((object)$request,$user)===false)return $this->respond(['success'=>false,'message'=>'Forbidden'],403);
         $request['values']=$this->db->table($this->p.'oa_request_values')->select('field_key,value_text,value_json')->where(['request_id'=>$id,'revision_no'=>$request['revision_no']])->get()->getResultArray();
-        $request['timeline']=$this->db->table($this->p.'oa_stage_instances i')->select('i.id,i.name_snapshot,i.type_snapshot,i.status,i.activated_at,i.completed_at,i.due_at,d.decision,d.comment,d.actor_name_snapshot,d.created_at decision_at')->join($this->p.'oa_decisions d','d.stage_instance_id=i.id','left')->where('i.request_id',$id)->orderBy('i.position')->orderBy('d.created_at')->get()->getResultArray();
+        $request['timeline']=$this->db->table($this->p.'oa_stage_instances i')->select('i.id,i.name_snapshot,i.type_snapshot,i.status,i.activated_at,i.completed_at,i.due_at,d.decision,d.comment,d.actor_name_snapshot,d.created_at decision_at')->join($this->p.'oa_decisions d','d.stage_instance_id=i.id','left')->where('i.request_id',$id)->orderBy('i.position')->orderBy('i.cycle_no')->orderBy('d.created_at')->get()->getResultArray();
         $awaiting=[];foreach($this->db->table($this->p.'oa_assignments a')->select("a.stage_instance_id,CONCAT(u.first_name,' ',u.last_name) name")->join($this->p.'oa_stage_instances i','i.id=a.stage_instance_id')->join($this->p.'users u','u.id=a.user_id','left')->where(['i.request_id'=>$id,'a.status'=>'pending'])->whereIn('i.status',['active','overdue'])->get()->getResultArray() as $row)$awaiting[(int)$row['stage_instance_id']][]=trim((string)$row['name']);
         foreach($request['timeline'] as &$timelineRow)$timelineRow['awaiting_approvers']=$awaiting[(int)$timelineRow['id']]??[];unset($timelineRow);
         $request['comments']=$this->db->table($this->p.'oa_comments')->select('user_name_snapshot,comment,visibility,created_at')->where('request_id',$id)->orderBy('created_at')->get()->getResultArray();
@@ -213,6 +213,13 @@ class Operations_api extends ResourceController
             foreach($resubmitFields as &$resubmitField){$fieldConfig=json_decode($resubmitField['config_json']?:'{}',true)?:[];$resubmitField['editable_on_return']=!array_key_exists('editable_on_return',$fieldConfig)||!empty($fieldConfig['editable_on_return']);}
             $request['fields']=$resubmitFields;
         }
+        // Return goes back to the previous approver by default (send
+        // return_to=requester to send it to the requester instead).
+        $engine=new Workflow_engine();$activeStage=$request['current_stage_instance_id']?$this->db->table($this->p.'oa_stage_instances')->where('id',$request['current_stage_instance_id'])->get()->getRow():null;
+        $previous=$request['can_decide']&&$activeStage?$engine->previousApprovedStage($id,$activeStage):null;
+        $request['return_previous_stage']=$previous?$previous->name_snapshot:null;
+        $returnDecision=$request['return_stage_instance_id']?$this->db->table($this->p.'oa_decisions d')->select('d.comment,d.actor_name_snapshot,i.name_snapshot stage_name')->join($this->p.'oa_stage_instances i','i.id=d.stage_instance_id')->where(['d.stage_instance_id'=>$request['return_stage_instance_id'],'d.decision'=>'return'])->orderBy('d.id','DESC')->get(1)->getRowArray():null;
+        $request['correction']=$request['return_strategy']==='previous_stage'&&$request['status']!=='returned'&&$returnDecision?['returned_by'=>$returnDecision['actor_name_snapshot'],'returned_from_stage'=>$returnDecision['stage_name'],'reason'=>$returnDecision['comment']]:null;
         $request['can_cancel']=(int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','submitted','pending_approval','returned','information_requested'],true);
         $request['can_delete']=(new Operations_permissions())->allowed('operations_delete_request',$user)||((int)$request['requester_id']===(int)$user->id&&in_array($request['status'],['draft','cancelled','rejected'],true));
         $openConversation=$request['status']==='information_requested'?$this->db->table($this->p.'oa_conversations')->where(['request_id'=>$id,'assigned_to'=>$user->id,'status'=>'open'])->get()->getRowArray():null;
@@ -245,7 +252,7 @@ class Operations_api extends ResourceController
         // operations_admin_override: the "superadmin" of this module -
         // decide any active stage regardless of assignment.
         $hasOverride=(new Operations_permissions())->allowed('operations_admin_override',$user);
-        if(!$permission||(!$isAssignedApprover&&!$hasOverride&&!(new Operations_permissions())->allowed($permission,$user)))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,$stageInstanceId,(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user,$hasOverride&&!$isAssignedApprover);return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
+        if(!$permission||(!$isAssignedApprover&&!$hasOverride&&!(new Operations_permissions())->allowed($permission,$user)))return $this->respond(['success'=>false,'message'=>'Forbidden'],403);try{(new Workflow_engine())->decide($id,$stageInstanceId,(int)$this->request->getPost('lock_version'),$decision,trim((string)$this->request->getPost('comment')),$user,$hasOverride&&!$isAssignedApprover,$this->request->getPost('return_to')==='requester'?'requester':'previous');return $this->respond(['success'=>true,'message'=>'Decision recorded']);}catch(\Throwable $e){return $this->respond(['success'=>false,'message'=>$e->getMessage()],409);}
     }
     public function comment(int $id):ResponseInterface
     {
